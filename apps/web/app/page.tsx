@@ -30,7 +30,7 @@ const rankingTabs = [
   ['tower', '탑'],
 ] as const;
 type RankingType = (typeof rankingTabs)[number][0];
-type AuthState = { status: 'loading' | 'guest' | 'authenticated'; botUid?: string };
+type AuthState = { status: 'loading' | 'guest' | 'authenticated' };
 type DashboardState =
   | { status: 'idle' | 'loading' | 'unconfigured' | 'not-found' | 'error' }
   | { status: 'success'; data: PortalDashboard };
@@ -66,7 +66,7 @@ export default function Home() {
         if (!active) return;
         if (result.authenticated) setDashboard({ status: 'loading' });
         setAuth(result.authenticated
-          ? { status: 'authenticated', botUid: result.botUid }
+          ? { status: 'authenticated' }
           : { status: 'guest' });
       })
       .catch(() => {
@@ -147,6 +147,7 @@ export default function Home() {
         <DashboardSection
           auth={auth}
           state={dashboard}
+          selectedCharacter={selectedCharacter}
           selectedSystem={selectedSystem}
           selectSystem={setSelectedSystem}
         />
@@ -198,7 +199,6 @@ function Header({ auth, menuOpen, closeMenu, toggleMenu, signOut }: {
       </nav>
       {auth.status === 'authenticated' ? (
         <div className="account-cluster">
-          <span className="uid-chip"><i /> UID {auth.botUid}</span>
           <button className="account-button" type="button" onClick={signOut}>로그아웃</button>
         </div>
       ) : (
@@ -234,23 +234,43 @@ function WorldHero({ authenticated }: { authenticated: boolean }) {
   );
 }
 
-function DashboardSection({ auth, state, selectedSystem, selectSystem }: {
+function DashboardSection({ auth, state, selectedCharacter, selectedSystem, selectSystem }: {
   auth: AuthState;
   state: DashboardState;
+  selectedCharacter: string;
   selectedSystem: string;
   selectSystem: (id: string) => void;
 }) {
   const systems = state.status === 'success' ? state.data.systems : [];
   const generatedAt = state.status === 'success' ? state.data.meta.generatedAt : '';
+  const characters = state.status === 'success' ? state.data.characters ?? [] : [];
+  const character = characters.find((item) => item.job === selectedCharacter)
+    ?? characters.find((item) => item.current)
+    ?? characters[0];
+  const characterName = characterDisplayName(character);
+  const characterContext = characterJobLevel(character);
   const active = systems.find((system) => system.id === selectedSystem) ?? systems[0];
   return (
     <section className="dashboard-section" id="dashboard">
       <SectionHeading eyebrow="LIVE GAME DASHBOARD" title="내 게임 대시보드" description="카카오톡 RPG 데이터를 읽기 전용 화면으로 확인합니다.">
         <span className={`sync-chip ${state.status === 'success' ? 'live' : ''}`}><i /> {dashboardBadge(auth, state)}</span>
       </SectionHeading>
+      {state.status === 'success' && character && (
+        <div className="dashboard-character-identity">
+          <strong>{characterName}</strong>
+          <span>{characterContext}</span>
+        </div>
+      )}
       {state.status === 'success' && state.data.summary && state.data.summary.length > 0 && (
         <div className="summary-grid">
-          {state.data.summary.map(([label, value, detail]) => <Metric key={label} metric={[label, value, detail]} />)}
+          {state.data.summary.map(([label, value, detail], index) => (
+            <Metric
+              key={label}
+              metric={index === 0 && character
+                ? ['캐릭터', characterName, [characterContext, character.current ? detail : undefined].filter(Boolean).join(' · ')]
+                : [label, value, detail]}
+            />
+          ))}
         </div>
       )}
       {auth.status !== 'authenticated' ? (
@@ -284,14 +304,18 @@ function DashboardSection({ auth, state, selectedSystem, selectSystem }: {
               ))}
             </div>
           </aside>
-          {active && <SystemPanel system={active} generatedAt={generatedAt} />}
+          {active && <SystemPanel system={active} generatedAt={generatedAt} characterContext={`${characterName} · ${characterContext}`} />}
         </div>
       )}
     </section>
   );
 }
 
-function SystemPanel({ system, generatedAt }: { system: PortalSystem; generatedAt: string }) {
+function SystemPanel({ system, generatedAt, characterContext }: {
+  system: PortalSystem;
+  generatedAt: string;
+  characterContext: string;
+}) {
   const [copied, setCopied] = useState(false);
   async function copy() {
     try {
@@ -304,7 +328,7 @@ function SystemPanel({ system, generatedAt }: { system: PortalSystem; generatedA
   return (
     <section className="feature-panel" aria-live="polite">
       <div className="feature-panel-head">
-        <div><span className="feature-icon">{system.icon}</span><div><small>{system.command}</small><h3>{system.title}</h3></div></div>
+        <div><span className="feature-icon">{system.icon}</span><div><small>{system.command}</small><h3>{system.title}</h3><p className="feature-character-context">{characterContext}</p></div></div>
         <span className="data-badge">실제 API · 읽기 전용</span>
       </div>
       <p className="feature-description">{system.description}</p>
@@ -371,6 +395,17 @@ function CharacterFacts({ character }: { character: PortalCharacter }) {
   return <p>{[character.level, character.power && `전투력 ${character.power}`, character.weapon].filter(Boolean).join(' · ')}</p>;
 }
 
+function characterDisplayName(character?: PortalCharacter) {
+  const name = character?.name?.trim();
+  return name || '이름 없는 캐릭터';
+}
+
+function characterJobLevel(character?: PortalCharacter) {
+  if (!character) return '직업 정보 없음';
+  const visual = characterVisuals[character.job];
+  return [visual.label, character.level].filter(Boolean).join(' · ');
+}
+
 function SelectedCharacter({ selected, character, accountGender }: {
   selected: string;
   character?: PortalCharacter;
@@ -384,7 +419,7 @@ function SelectedCharacter({ selected, character, accountGender }: {
   ].filter((item): item is [string, string] => Boolean(item[1]));
   return (
     <article className="selected-dashboard">
-      <div className="selected-profile"><Image src={resolveCharacterImage(key, character?.gender ?? accountGender, 'profile')} alt={`${visual.label} 프로필`} width={66} height={66} /><div><small>{character ? '선택 캐릭터' : '기본 직업 소개'}</small><h3>{character?.name ?? `나테베의 ${visual.label}`}</h3><p>{character?.title ?? '게임 데이터 연결 시 상세정보가 표시됩니다.'}</p></div></div>
+      <div className="selected-profile"><Image src={resolveCharacterImage(key, character?.gender ?? accountGender, 'profile')} alt={`${visual.label} 프로필`} width={66} height={66} /><div><small>{character ? '선택 캐릭터' : '기본 직업 소개'}</small><h3>{character ? characterDisplayName(character) : `나테베의 ${visual.label}`}</h3><p>{character?.title ?? '게임 데이터 연결 시 상세정보가 표시됩니다.'}</p></div></div>
       <div className="selected-stats">{facts.map(([label, value]) => <div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
     </article>
   );
