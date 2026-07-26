@@ -1,0 +1,19 @@
+{
+  "name": "natebe-rpg-homepage",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @natebe/web --filter @natebe/api dev",
+    "dev:web": "pnpm --filter @natebe/web dev",
+    "dev:api": "pnpm --filter @natebe/api dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @natebe/api test",
+    "test:e2e": "pnpm --filter @natebe/api test:e2e",
+    "db:generate": "pnpm --filter @natebe/database generate",
+    "db:migrate": "pnpm --filter @natebe/database migrate",
+    "db:studio": "pnpm --filter @natebe/database studio"
+  }
+}

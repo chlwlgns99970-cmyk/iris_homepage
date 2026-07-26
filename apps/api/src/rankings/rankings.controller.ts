@@ -1,0 +1,2 @@
+import { BadRequestException, Controller, Get, Query } from '@nestjs/common'; import { RankingsService, RankingType } from './rankings.service';
+@Controller('api/rankings') export class RankingsController { constructor(private service:RankingsService){} @Get() get(@Query('type') type:string){ if(!['power','level','raid','tower'].includes(type)) throw new BadRequestException({code:'INVALID_RANKING_TYPE',message:'지원하지 않는 랭킹 유형입니다.'}); return this.service.get(type as RankingType); } }

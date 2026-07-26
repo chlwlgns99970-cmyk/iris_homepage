@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum NoticeStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AdminRole {
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum WebAccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum WebLoginRequestStatus {
+  PENDING
+  APPROVED
+  CONSUMED
+  CANCELLED
+  EXPIRED
+}
+
+model Notice {
+  id               String       @id @default(cuid())
+  type             String       @db.VarChar(30)
+  title            String       @db.VarChar(120)
+  summary          String       @db.VarChar(240)
+  content          String       @db.Text
+  status           NoticeStatus @default(DRAFT)
+  publishedAt      DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  createdByAdminId String?
+  createdByAdmin   Admin?       @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  @@index([status, publishedAt])
+  @@map("notices")
+}
+
+model Admin {
+  id           String     @id @default(cuid())
+  loginId      String     @unique @db.VarChar(100)
+  passwordHash String?
+  role         AdminRole  @default(ADMIN)
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  notices      Notice[]
+  @@map("admins")
+}
+
+model AccountLinkToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  botUid    String    @db.VarChar(64)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  @@index([botUid])
+  @@map("account_link_tokens")
+}
+
+model WebAccount {
+  id          String           @id @default(cuid())
+  botUid      String           @unique @db.VarChar(64)
+  status      WebAccountStatus @default(ACTIVE)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  lastLoginAt DateTime?
+  sessions    WebSession[]
+  @@map("web_accounts")
+}
+
+model WebLoginRequest {
+  id               String                @id @default(uuid())
+  userCodeHash     String                @unique
+  deviceSecretHash String                @unique
+  status           WebLoginRequestStatus @default(PENDING)
+  approvedBotUid   String?               @db.VarChar(8)
+  expiresAt        DateTime
+  approvedAt       DateTime?
+  consumedAt       DateTime?
+  cancelledAt      DateTime?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  @@index([expiresAt])
+  @@index([approvedBotUid])
+  @@index([status])
+  @@map("web_login_requests")
+}
+
+model WebSession {
+  id           String      @id @default(cuid())
+  sessionHash  String      @unique
+  webAccountId String
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime    @default(now())
+  lastSeenAt   DateTime?
+  webAccount   WebAccount  @relation(fields: [webAccountId], references: [id], onDelete: Restrict)
+  @@index([webAccountId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("web_sessions")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorType  String   @db.VarChar(30)
+  actorId    String?
+  action     String   @db.VarChar(100)
+  targetType String   @db.VarChar(50)
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  @@index([createdAt])
+  @@map("audit_logs")
+}

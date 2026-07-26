@@ -1,0 +1,2 @@
+import { Controller, Get, Param, Query } from '@nestjs/common'; import { NoticeQueryDto } from './notices.dto'; import { NoticesService } from './notices.service';
+@Controller('api/notices') export class NoticesController { constructor(private service:NoticesService){} @Get() list(@Query() q:NoticeQueryDto){return this.service.list(q.page,q.limit)} @Get(':id') one(@Param('id') id:string){ if(!/^[a-zA-Z0-9_-]{1,40}$/.test(id)) return this.service.one('__invalid__'); return this.service.one(id); } }

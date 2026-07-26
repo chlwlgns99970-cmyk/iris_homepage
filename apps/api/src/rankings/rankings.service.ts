@@ -1,0 +1,2 @@
+import { Injectable, ServiceUnavailableException } from '@nestjs/common'; export type RankingType='power'|'level'|'raid'|'tower'; export interface RankingProvider { getRanking(type:RankingType):Promise<unknown[]>; }
+@Injectable() export class RankingsService { async get(type:RankingType):Promise<never>{ void type; throw new ServiceUnavailableException({code:'RANKING_PROVIDER_NOT_CONFIGURED',message:'랭킹 데이터 공급자가 설정되지 않았습니다.'}); } }

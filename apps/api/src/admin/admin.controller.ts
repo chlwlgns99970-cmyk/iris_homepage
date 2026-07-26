@@ -1,0 +1,2 @@
+import { Controller, Delete, Param, Patch, Post, UnauthorizedException } from '@nestjs/common';
+@Controller('api/admin/notices') export class AdminController { private blocked():never{throw new UnauthorizedException({code:'ADMIN_AUTH_REQUIRED',message:'관리자 인증이 필요합니다.'})} @Post() create(){return this.blocked()} @Patch(':id') update(@Param('id') id:string){void id;return this.blocked()} @Delete(':id') remove(@Param('id') id:string){void id;return this.blocked()} }
