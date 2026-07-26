@@ -12,6 +12,7 @@ import {
   type PortalCharacter,
   type PortalContent,
   type PortalDashboard,
+  type PortalRankingCategory,
   type PortalSystem,
 } from '@/lib/api';
 import {
@@ -215,8 +216,8 @@ function WorldHero({ authenticated }: { authenticated: boolean }) {
       <div className="world-shade" />
       <div className="world-copy">
         <p className="eyebrow">NATEBE RPG PORTAL</p>
-        <h1>캐릭터부터 게임 현황까지<br /><span>한곳에서 확인하는 RPG 포털</span></h1>
-        <p>봇의 게임 정보를 안전한 웹 인증 후<br />한눈에 확인하는 나테베 RPG 대시보드입니다.</p>
+        <h1><span>내 캐릭터와 모험 기록을 한눈에</span></h1>
+        <p>캐릭터 정보와 주요 콘텐츠 진행 상황을 확인하세요.</p>
         <div className="world-actions">
           <a className="button primary" href="#dashboard">게임 현황 보기</a>
           <Link className="button glass" href={authenticated ? '#characters' : '/connect'}>
@@ -252,9 +253,10 @@ function DashboardSection({ auth, state, selectedCharacter, selectedSystem, sele
   const active = systems.find((system) => system.id === selectedSystem) ?? systems[0];
   return (
     <section className="dashboard-section" id="dashboard">
-      <SectionHeading eyebrow="LIVE GAME DASHBOARD" title="내 게임 대시보드" description="카카오톡 RPG 데이터를 읽기 전용 화면으로 확인합니다.">
+      <div className="dashboard-status-line">
+        <p className="eyebrow">LIVE CHARACTER STATUS</p>
         <span className={`sync-chip ${state.status === 'success' ? 'live' : ''}`}><i /> {dashboardBadge(auth, state)}</span>
-      </SectionHeading>
+      </div>
       {state.status === 'success' && character && (
         <div className="dashboard-character-identity">
           <strong>{characterName}</strong>
@@ -333,12 +335,58 @@ function SystemPanel({ system, generatedAt, characterContext }: {
       </div>
       <p className="feature-description">{system.description}</p>
       {system.metrics.length > 0 && <div className="feature-metrics">{system.metrics.map((metric) => <Metric key={metric[0]} metric={metric} />)}</div>}
-      <div className="feature-content"><SystemContent content={system.content} /></div>
+      <div className="feature-content">
+        {system.rankings
+          ? <PortalRankingPanel categories={system.rankings.categories} />
+          : <SystemContent content={system.content} />}
+      </div>
       <div className="feature-footer">
         <span>동기화 · {formatTimestamp(generatedAt)}</span>
         <button className="command-copy" type="button" onClick={copy}>{copied ? '복사됨' : '카톡 명령어 복사'}</button>
       </div>
     </section>
+  );
+}
+
+function PortalRankingPanel({ categories }: { categories: PortalRankingCategory[] }) {
+  const available = categories.filter((category) => category.rows.length > 0);
+  const [selected, setSelected] = useState(available[0]?.id ?? '');
+  const active = available.find((category) => category.id === selected) ?? available[0];
+  if (!active) return <div className="ranking-message"><b>아직 랭킹 데이터가 없습니다.</b></div>;
+  const mine = active.rows.find((row) => row.current);
+  return (
+    <div className="portal-ranking">
+      <div className="tabs portal-ranking-tabs" role="tablist" aria-label="RPG 랭킹 종류">
+        {available.map((category) => (
+          <button
+            className={`tab ${active.id === category.id ? 'active' : ''}`}
+            role="tab"
+            aria-selected={active.id === category.id}
+            type="button"
+            key={category.id}
+            onClick={() => setSelected(category.id)}
+          >
+            {category.label}
+          </button>
+        ))}
+      </div>
+      <div className="table-wrap">
+        <table className="portal-ranking-table">
+          <thead><tr><th>순위</th><th>캐릭터 닉네임</th><th>직업</th><th>{active.label}</th></tr></thead>
+          <tbody>
+            {active.rows.map((row) => (
+              <tr className={`${row.rank <= 3 ? 'top-rank' : ''} ${row.current ? 'current-rank' : ''}`} key={`${active.id}-${row.rank}-${row.nickname}-${row.job}`}>
+                <td className="rank">{row.rank}위</td>
+                <td><b>{row.nickname || '이름 없는 캐릭터'}</b></td>
+                <td>{row.job}</td>
+                <td>{row.value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="my-ranking">{mine ? `내 순위: ${mine.rank}위` : '내 순위: 랭킹 기록 없음'}</p>
+    </div>
   );
 }
 

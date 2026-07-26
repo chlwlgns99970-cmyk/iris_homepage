@@ -81,6 +81,23 @@ export type PortalSystem = {
   description: string;
   metrics: PortalMetric[];
   content: PortalContent;
+  rankings?: {
+    categories: PortalRankingCategory[];
+  };
+};
+
+export type PortalRankingRow = {
+  rank: number;
+  nickname: string;
+  job: string;
+  value: string;
+  current: boolean;
+};
+
+export type PortalRankingCategory = {
+  id: 'level' | 'exp' | 'gold' | 'tower' | 'raid';
+  label: string;
+  rows: PortalRankingRow[];
 };
 
 export type PortalCharacter = {
