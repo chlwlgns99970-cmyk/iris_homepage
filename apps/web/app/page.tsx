@@ -7,30 +7,17 @@ import {
   ApiError,
   getCurrentAuth,
   getPortalDashboard,
-  getRanking,
   logout,
   type PortalCharacter,
   type PortalContent,
   type PortalDashboard,
   type PortalRankingCategory,
+  type PortalRankingRow,
+  type PortalRankings,
   type PortalSystem,
 } from '@/lib/api';
-import {
-  parseRankingRows,
-  rankingFailureStatus,
-  rankingResultStatus,
-  type RankingRow,
-  type RankingStatus,
-} from '@/lib/ranking';
 import { resolveAccountGender, resolveCharacterImage } from '@/lib/character-image';
 
-const rankingTabs = [
-  ['power', '전투력'],
-  ['level', '레벨'],
-  ['raid', '레이드'],
-  ['tower', '탑'],
-] as const;
-type RankingType = (typeof rankingTabs)[number][0];
 type AuthState = { status: 'loading' | 'guest' | 'authenticated' };
 type DashboardState =
   | { status: 'idle' | 'loading' | 'unconfigured' | 'not-found' | 'error' }
@@ -55,9 +42,6 @@ export default function Home() {
   const [dashboard, setDashboard] = useState<DashboardState>({ status: 'idle' });
   const [selectedSystem, setSelectedSystem] = useState('');
   const [selectedCharacter, setSelectedCharacter] = useState('warrior');
-  const [rankingType, setRankingType] = useState<RankingType>('power');
-  const [rankings, setRankings] = useState<RankingRow[]>([]);
-  const [rankingStatus, setRankingStatus] = useState<RankingStatus>('loading');
   const [toast, setToast] = useState('');
 
   useEffect(() => {
@@ -104,25 +88,6 @@ export default function Home() {
     return () => { active = false; };
   }, [auth.status]);
 
-  useEffect(() => {
-    let active = true;
-    getRanking(rankingType)
-      .then((response) => {
-        if (!active) return;
-        const result = parseRankingRows(response);
-        if (!result.ok) {
-          setRankingStatus('error');
-          return;
-        }
-        setRankings(result.rows);
-        setRankingStatus(rankingResultStatus(result.rows));
-      })
-      .catch((error: unknown) => {
-        if (active) setRankingStatus(rankingFailureStatus(error));
-      });
-    return () => { active = false; };
-  }, [rankingType]);
-
   async function signOut() {
     try {
       await logout();
@@ -159,16 +124,7 @@ export default function Home() {
         />
         <GallerySection state={dashboard} />
         <PremiumSection />
-        <RankingSection
-          type={rankingType}
-          rows={rankings}
-          status={rankingStatus}
-          setType={(type) => {
-            setRankings([]);
-            setRankingStatus('loading');
-            setRankingType(type);
-          }}
-        />
+        <RankingSection state={dashboard} />
       </main>
       <Footer />
       <div className={`toast ${toast ? 'show' : ''}`} role="status" onTransitionEnd={() => {
@@ -514,20 +470,111 @@ function PremiumSection() {
   );
 }
 
-function RankingSection({ type, rows, status, setType }: { type: RankingType; rows: RankingRow[]; status: RankingStatus; setType: (type: RankingType) => void }) {
+function RankingSection({ state }: { state: DashboardState }) {
+  const [group, setGroup] = useState<'overall' | 'byJob' | 'hallOfFame'>('overall');
+  const [overallId, setOverallId] = useState<PortalRankingCategory['id']>('power');
+  const [jobId, setJobId] = useState<'warrior' | 'archer' | 'mage'>('warrior');
+  const rankings = state.status === 'success'
+    ? state.data.systems.find((system) => system.id === 'rankings')?.rankings
+    : undefined;
+  const overall = rankings?.categories.filter((category) => (
+    ['power', 'level', 'exp', 'gold', 'tower', 'raid'].includes(category.id)
+  )) ?? [];
+  const activeOverall = overall.find((category) => category.id === overallId) ?? overall[0];
+  const byJob = jobRankingCategories(rankings);
+  const activeJob = byJob.find((category) => category.id === jobId) ?? byJob[0];
+  const active = group === 'overall' ? activeOverall : group === 'byJob' ? activeJob : undefined;
+  const rows = active?.rows ?? [];
   const podium = rows.slice(0, 3);
   const ordered = podium.length === 3 ? [podium[1], podium[0], podium[2]] : podium;
+  const hallOfFame = rankings?.hallOfFame ?? [];
+
   return (
     <section className="section" id="ranking">
       <SectionHeading eyebrow="HALL OF FAME" title="명예의 전당">
-        <div className="tabs" role="tablist">{rankingTabs.map(([id, label]) => <button className={`tab ${type === id ? 'active' : ''}`} role="tab" aria-selected={type === id} type="button" key={id} onClick={() => setType(id)}>{label}</button>)}</div>
+        <div className="tabs ranking-group-tabs" role="tablist" aria-label="랭킹 상위 분류">
+          {([
+            ['overall', '종합'],
+            ['byJob', '직업별'],
+            ['hallOfFame', '명예의 전당'],
+          ] as const).map(([id, label]) => (
+            <button className={`tab ${group === id ? 'active' : ''}`} role="tab" aria-selected={group === id} type="button" key={id} onClick={() => setGroup(id)}>{label}</button>
+          ))}
+        </div>
       </SectionHeading>
-      {status === 'success' ? <>
-        <div className="podium">{ordered.map((row) => <article className={`podium-card ${row.rank === 1 ? 'first' : ''}`} key={`${row.rank}-${row.name}`}><div className="podium-rank">{row.rank}</div><h3>{row.name}</h3><p>{row.job} · {row.value}</p></article>)}</div>
-        <div className="table-wrap"><table><thead><tr><th>순위</th><th>모험가</th><th>직업</th><th>{rankingTabs.find(([id]) => id === type)?.[1]}</th></tr></thead><tbody>{rows.map((row) => <tr key={`${row.rank}-${row.name}`}><td className="rank">{row.rank}</td><td><b>{row.name}</b></td><td>{row.job}</td><td>{row.value}</td></tr>)}</tbody></table></div>
-      </> : <div className="ranking-message"><b>{rankingMessage(status)}</b>{status === 'unconfigured' && <p>실제 Iris 데이터 공급자 연결 전에는 가상 순위를 표시하지 않습니다.</p>}</div>}
+      {state.status === 'loading' && <RankingMessage title="랭킹 정보를 불러오는 중입니다." />}
+      {state.status !== 'success' && state.status !== 'loading' && (
+        <RankingMessage
+          title={state.status === 'idle' ? '로그인 후 실제 RPG 랭킹을 확인할 수 있습니다.' : '랭킹 정보를 불러오지 못했습니다.'}
+          detail={state.status === 'idle' ? '가상 순위는 표시하지 않습니다.' : '잠시 후 다시 시도해 주세요.'}
+        />
+      )}
+      {state.status === 'success' && group === 'overall' && (
+        activeOverall
+          ? <RankingRows category={activeOverall} tabs={overall} select={(id) => setOverallId(id)} ordered={ordered} />
+          : <RankingMessage title="등록된 종합 랭킹 정보가 없습니다." />
+      )}
+      {state.status === 'success' && group === 'byJob' && (
+        activeJob
+          ? <RankingRows category={activeJob} tabs={byJob} select={(id) => setJobId(id as typeof jobId)} ordered={ordered} />
+          : <RankingMessage title="등록된 직업별 랭킹 정보가 없습니다." />
+      )}
+      {state.status === 'success' && group === 'hallOfFame' && (
+        hallOfFame.length
+          ? <div className="hall-grid">{hallOfFame.map((row) => (
+            <article className="hall-card" key={row.id}>
+              <span>HONOR RECORD</span>
+              <h3>{row.title}</h3>
+              <b>{row.nickname} · {row.job}</b>
+              <p>{row.value}</p>
+              {row.achievedAt && <time dateTime={row.achievedAt}>{formatTimestamp(row.achievedAt)}</time>}
+            </article>
+          ))}</div>
+          : <RankingMessage title="명예의 전당 기록이 아직 없습니다." detail="게임 내 기록이 쌓이면 이곳에 표시됩니다." />
+      )}
     </section>
   );
+}
+
+function jobRankingCategories(rankings?: PortalRankings): PortalRankingCategory[] {
+  if (!rankings?.byJob) return [];
+  return ([
+    ['warrior', '전사'],
+    ['archer', '궁수'],
+    ['mage', '마법사'],
+  ] as const).flatMap(([id, label]) => {
+    const rows = rankings.byJob?.[id] ?? [];
+    return rows.length ? [{ id, label, rows }] : [];
+  });
+}
+
+function RankingRows({ category, tabs, select, ordered }: {
+  category: PortalRankingCategory;
+  tabs: PortalRankingCategory[];
+  select: (id: PortalRankingCategory['id']) => void;
+  ordered: PortalRankingRow[];
+}) {
+  const mine = category.rows.find((row) => row.current);
+  return <>
+    <div className="tabs ranking-subtabs" role="tablist" aria-label={`${category.label} 랭킹 종류`}>
+      {tabs.map((tab) => (
+        <button className={`tab ${tab.id === category.id ? 'active' : ''}`} role="tab" aria-selected={tab.id === category.id} type="button" key={tab.id} onClick={() => select(tab.id)}>{tab.label}</button>
+      ))}
+    </div>
+    <div className="podium">{ordered.map((row) => (
+      <article className={`podium-card ${row.rank === 1 ? 'first' : ''} ${row.current ? 'current-rank' : ''}`} key={`${category.id}-${row.rank}-${row.nickname}`}>
+        <div className="podium-rank">{row.rank}</div><h3>{row.nickname}</h3><p>{row.job} · {row.value}</p>
+      </article>
+    ))}</div>
+    <div className="table-wrap"><table><thead><tr><th>순위</th><th>모험가</th><th>직업</th><th>{category.label}</th></tr></thead><tbody>
+      {category.rows.map((row) => <tr className={row.current ? 'current-rank' : ''} key={`${category.id}-${row.rank}-${row.nickname}`}><td className="rank">{row.rank}</td><td><b>{row.nickname}</b></td><td>{row.job}</td><td>{row.value}</td></tr>)}
+    </tbody></table></div>
+    <p className="my-ranking">{mine ? `내 순위: ${mine.rank}위` : '내 순위: 랭킹 기록 없음'}</p>
+  </>;
+}
+
+function RankingMessage({ title, detail }: { title: string; detail?: string }) {
+  return <div className="ranking-message"><b>{title}</b>{detail && <p>{detail}</p>}</div>;
 }
 
 function SectionHeading({ eyebrow, title, description, children }: { eyebrow: string; title: string; description?: string; children?: React.ReactNode }) {
@@ -552,13 +599,6 @@ function dashboardBadge(auth: AuthState, state: DashboardState) {
   if (state.status === 'success') return '실제 API 연결';
   if (state.status === 'unconfigured') return 'API 연결 준비중';
   return '연결 상태 확인 필요';
-}
-
-function rankingMessage(status: RankingStatus) {
-  if (status === 'loading') return '랭킹 정보를 불러오는 중입니다.';
-  if (status === 'empty') return '등록된 랭킹 정보가 없습니다.';
-  if (status === 'unconfigured') return '실제 Iris 데이터 공급자가 아직 연결되지 않았습니다.';
-  return '랭킹 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.';
 }
 
 function formatTimestamp(value: string) {

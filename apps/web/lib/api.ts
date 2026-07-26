@@ -81,9 +81,7 @@ export type PortalSystem = {
   description: string;
   metrics: PortalMetric[];
   content: PortalContent;
-  rankings?: {
-    categories: PortalRankingCategory[];
-  };
+  rankings?: PortalRankings;
 };
 
 export type PortalRankingRow = {
@@ -95,9 +93,36 @@ export type PortalRankingRow = {
 };
 
 export type PortalRankingCategory = {
-  id: 'level' | 'exp' | 'gold' | 'tower' | 'raid';
+  id: 'power' | 'level' | 'exp' | 'gold' | 'tower' | 'raid' | 'warrior' | 'archer' | 'mage';
   label: string;
   rows: PortalRankingRow[];
+};
+
+export type PortalHallOfFameRow = {
+  id: string;
+  title: string;
+  nickname: string;
+  job: string;
+  value: string;
+  achievedAt?: string;
+};
+
+export type PortalRankings = {
+  categories: PortalRankingCategory[];
+  overall?: {
+    combatPower: PortalRankingRow[];
+    level: PortalRankingRow[];
+    exp: PortalRankingRow[];
+    gold: PortalRankingRow[];
+    tower: PortalRankingRow[];
+    raid: PortalRankingRow[];
+  };
+  byJob?: {
+    warrior: PortalRankingRow[];
+    archer: PortalRankingRow[];
+    mage: PortalRankingRow[];
+  };
+  hallOfFame?: PortalHallOfFameRow[];
 };
 
 export type PortalCharacter = {
@@ -123,7 +148,7 @@ export type PortalArtwork = {
 };
 
 export type PortalDashboard = {
-  meta: { version: number; uid: string; generatedAt: string };
+  meta: { version: number; generatedAt: string };
   systems: PortalSystem[];
   characters?: PortalCharacter[];
   artworks?: PortalArtwork[];
