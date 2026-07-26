@@ -257,7 +257,8 @@ function DashboardSection({ auth, state, selectedCharacter, selectedSystem, sele
             <div className="feature-buttons">
               {systems.map((system) => (
                 <button className={`feature-button ${active?.id === system.id ? 'active' : ''}`} type="button" key={system.id} onClick={() => selectSystem(system.id)}>
-                  <span>{system.icon}</span>{system.title}
+                  <span className="feature-button-icon" aria-hidden="true">{system.icon}</span>
+                  <span className="feature-button-label">{system.title}</span>
                 </button>
               ))}
             </div>
