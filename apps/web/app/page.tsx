@@ -16,7 +16,11 @@ import {
   type PortalRankings,
   type PortalSystem,
 } from '@/lib/api';
-import { resolveAccountGender, resolveCharacterImage } from '@/lib/character-image';
+import {
+  resolveAccountGender,
+  resolveCharacterImage,
+  resolveEffectiveGender,
+} from '@/lib/character-image';
 
 type AuthState = { status: 'loading' | 'guest' | 'authenticated' };
 type DashboardState =
@@ -382,7 +386,7 @@ function CharacterSection({ state, selected, select }: { state: DashboardState; 
           const character = characters.find((item) => item.job === job);
           return (
             <article className={`character-card ${selected === job ? 'active' : ''}`} key={job}>
-              <div className="character-image-wrap"><div className="character-art"><Image src={resolveCharacterImage(job, character?.gender ?? accountGender, 'card')} alt={`${visual.label} 기본 캐릭터`} fill sizes="(max-width: 620px) 82vw, 33vw" /></div><span className="slot-label">{visual.label.toUpperCase()}</span>{character && <span className="selected-mark">{character.current ? '현재 직업' : '보유 슬롯'}</span>}</div>
+              <div className="character-image-wrap"><div className="character-art"><Image src={resolveCharacterImage(job, resolveEffectiveGender(character?.gender, accountGender), 'card')} alt={`${visual.label} 기본 캐릭터`} fill sizes="(max-width: 620px) 82vw, 33vw" /></div><span className="slot-label">{visual.label.toUpperCase()}</span>{character && <span className="selected-mark">{character.current ? '현재 직업' : '보유 슬롯'}</span>}</div>
               <div className="character-card-body"><small>{visual.label} 기본 외형</small><h3>{character?.name ?? `나테베의 ${visual.label}`}</h3>
                 {character ? <CharacterFacts character={character} /> : <p>실제 슬롯 정보가 연결되면 레벨·전투력·장비가 표시됩니다.</p>}
                 <button type="button" onClick={() => select(job)}>{character ? '상세 보기' : '기본 외형 보기'}</button>
@@ -424,7 +428,7 @@ function SelectedCharacter({ selected, character, accountGender }: {
   ].filter((item): item is [string, string] => Boolean(item[1]));
   return (
     <article className="selected-dashboard">
-      <div className="selected-profile"><Image src={resolveCharacterImage(key, character?.gender ?? accountGender, 'profile')} alt={`${visual.label} 프로필`} width={66} height={66} /><div><small>{character ? '선택 캐릭터' : '기본 직업 소개'}</small><h3>{character ? characterDisplayName(character) : `나테베의 ${visual.label}`}</h3><p>{character?.title ?? '게임 데이터 연결 시 상세정보가 표시됩니다.'}</p></div></div>
+      <div className="selected-profile"><Image src={resolveCharacterImage(key, resolveEffectiveGender(character?.gender, accountGender), 'profile')} alt={`${visual.label} 프로필`} width={66} height={66} /><div><small>{character ? '선택 캐릭터' : '기본 직업 소개'}</small><h3>{character ? characterDisplayName(character) : `나테베의 ${visual.label}`}</h3><p>{character?.title ?? '게임 데이터 연결 시 상세정보가 표시됩니다.'}</p></div></div>
       <div className="selected-stats">{facts.map(([label, value]) => <div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
     </article>
   );
