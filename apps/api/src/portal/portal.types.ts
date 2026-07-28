@@ -14,19 +14,19 @@ export type PortalCharacter = {
 };
 
 export type PortalDashboard = {
-  meta: { version: number; uid: string; generatedAt: string };
+  meta: { version: number; generatedAt: string };
   summary: [string, string, string?][];
   systems: unknown[];
   characters: PortalCharacter[];
   artworks: unknown[];
 };
 
-export function parsePortalDashboard(value: unknown, expectedUid: string): PortalDashboard {
+export function parsePortalDashboard(value: unknown): PortalDashboard {
   if (!value || typeof value !== 'object') throw new Error('invalid response');
   const data = value as Record<string, unknown>;
   const meta = data.meta as Record<string, unknown> | undefined;
   if (
-    !meta || meta.version !== 1 || meta.uid !== expectedUid
+    !meta || meta.version !== 1
     || typeof meta.generatedAt !== 'string' || !Number.isFinite(Date.parse(meta.generatedAt))
     || !Array.isArray(data.summary) || !Array.isArray(data.systems)
     || !Array.isArray(data.characters) || !Array.isArray(data.artworks)
@@ -48,5 +48,14 @@ export function parsePortalDashboard(value: unknown, expectedUid: string): Porta
       gender: character.gender ?? 'unknown',
     } as PortalCharacter;
   });
-  return { ...(data as PortalDashboard), characters };
+  return {
+    meta: {
+      version: meta.version,
+      generatedAt: meta.generatedAt,
+    },
+    summary: data.summary as PortalDashboard['summary'],
+    systems: data.systems,
+    characters,
+    artworks: data.artworks,
+  };
 }

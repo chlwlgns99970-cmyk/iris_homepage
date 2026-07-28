@@ -18,12 +18,16 @@ import {
 } from '@/lib/api';
 import {
   charactersWithDisplayFallback,
+  defaultCharacterName,
   resolveAccountGender,
   resolveCharacterImage,
   resolveEffectiveGender,
+  resolvePortalNickname,
 } from '@/lib/character-image';
 
-type AuthState = { status: 'loading' | 'guest' | 'authenticated' };
+type AuthState =
+  | { status: 'loading' | 'guest' }
+  | { status: 'authenticated'; botUid: string };
 type DashboardState =
   | { status: 'idle' | 'loading' | 'unconfigured' | 'not-found' | 'error' }
   | { status: 'success'; data: PortalDashboard };
@@ -48,6 +52,7 @@ export default function Home() {
   const [selectedSystem, setSelectedSystem] = useState('');
   const [selectedCharacter, setSelectedCharacter] = useState('warrior');
   const [toast, setToast] = useState('');
+  const authenticatedBotUid = auth.status === 'authenticated' ? auth.botUid : null;
 
   useEffect(() => {
     let active = true;
@@ -56,7 +61,7 @@ export default function Home() {
         if (!active) return;
         if (result.authenticated) setDashboard({ status: 'loading' });
         setAuth(result.authenticated
-          ? { status: 'authenticated' }
+          ? { status: 'authenticated', botUid: result.botUid }
           : { status: 'guest' });
       })
       .catch(() => {
@@ -66,7 +71,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (auth.status !== 'authenticated') {
+    if (!authenticatedBotUid) {
       return;
     }
     let active = true;
@@ -91,13 +96,15 @@ export default function Home() {
         setDashboard({ status });
       });
     return () => { active = false; };
-  }, [auth.status]);
+  }, [authenticatedBotUid]);
 
   async function signOut() {
     try {
       await logout();
       setAuth({ status: 'guest' });
       setDashboard({ status: 'idle' });
+      setSelectedSystem('');
+      setSelectedCharacter('warrior');
       setToast('로그아웃되었습니다.');
     } catch (error) {
       setToast(error instanceof Error ? error.message : '로그아웃하지 못했습니다.');
@@ -205,8 +212,11 @@ function DashboardSection({ auth, state, selectedCharacter, selectedSystem, sele
 }) {
   const systems = state.status === 'success' ? state.data.systems : [];
   const generatedAt = state.status === 'success' ? state.data.meta.generatedAt : '';
+  const accountNickname = state.status === 'success'
+    ? resolvePortalNickname(state.data)
+    : '';
   const characters = state.status === 'success'
-    ? charactersWithDisplayFallback(state.data.characters)
+    ? charactersWithDisplayFallback(state.data.characters, accountNickname)
     : [];
   const character = characters.find((item) => item.job === selectedCharacter)
     ?? characters.find((item) => item.current)
@@ -376,8 +386,11 @@ function SystemContent({ content }: { content: PortalContent }) {
 }
 
 function CharacterSection({ state, selected, select }: { state: DashboardState; selected: string; select: (job: string) => void }) {
+  const accountNickname = state.status === 'success'
+    ? resolvePortalNickname(state.data)
+    : '';
   const characters = state.status === 'success'
-    ? charactersWithDisplayFallback(state.data.characters)
+    ? charactersWithDisplayFallback(state.data.characters, accountNickname)
     : [];
   const accountGender = resolveAccountGender(characters);
   const selectedData = characters.find((character) => character.job === selected);
@@ -392,7 +405,7 @@ function CharacterSection({ state, selected, select }: { state: DashboardState; 
           return (
             <article className={`character-card ${selected === job ? 'active' : ''}`} key={job}>
               <div className="character-image-wrap"><div className="character-art"><Image src={resolveCharacterImage(job, resolveEffectiveGender(character?.gender, accountGender), 'card')} alt={`${visual.label} 기본 캐릭터`} fill sizes="(max-width: 620px) 82vw, 33vw" /></div><span className="slot-label">{visual.label.toUpperCase()}</span>{character && <span className="selected-mark">{character.current ? '현재 직업' : '보유 슬롯'}</span>}</div>
-              <div className="character-card-body"><small>{visual.label} 기본 외형</small><h3>{character?.name ?? `나테베의 ${visual.label}`}</h3>
+              <div className="character-card-body"><small>{visual.label} 기본 외형</small><h3>{character?.name ?? defaultCharacterName(job, accountNickname)}</h3>
                 {character ? <CharacterFacts character={character} /> : <p>실제 슬롯 정보가 연결되면 레벨·전투력·장비가 표시됩니다.</p>}
                 <button type="button" onClick={() => select(job)}>{character ? '상세 보기' : '기본 외형 보기'}</button>
               </div>
@@ -400,7 +413,7 @@ function CharacterSection({ state, selected, select }: { state: DashboardState; 
           );
         })}
       </div>
-      <SelectedCharacter selected={selected} character={selectedData} accountGender={accountGender} />
+      <SelectedCharacter selected={selected} character={selectedData} accountGender={accountGender} accountNickname={accountNickname} />
     </section>
   );
 }
@@ -420,10 +433,11 @@ function characterJobLevel(character?: PortalCharacter) {
   return [visual.label, character.level].filter(Boolean).join(' · ');
 }
 
-function SelectedCharacter({ selected, character, accountGender }: {
+function SelectedCharacter({ selected, character, accountGender, accountNickname }: {
   selected: string;
   character?: PortalCharacter;
   accountGender: PortalCharacter['gender'];
+  accountNickname: string;
 }) {
   const key = selected in characterVisuals ? selected as keyof typeof characterVisuals : 'warrior';
   const visual = characterVisuals[key];
@@ -433,7 +447,7 @@ function SelectedCharacter({ selected, character, accountGender }: {
   ].filter((item): item is [string, string] => Boolean(item[1]));
   return (
     <article className="selected-dashboard">
-      <div className="selected-profile"><Image src={resolveCharacterImage(key, resolveEffectiveGender(character?.gender, accountGender), 'profile')} alt={`${visual.label} 프로필`} width={66} height={66} /><div><small>{character ? '선택 캐릭터' : '기본 직업 소개'}</small><h3>{character ? characterDisplayName(character) : `나테베의 ${visual.label}`}</h3><p>{character?.title ?? '게임 데이터 연결 시 상세정보가 표시됩니다.'}</p></div></div>
+      <div className="selected-profile"><Image src={resolveCharacterImage(key, resolveEffectiveGender(character?.gender, accountGender), 'profile')} alt={`${visual.label} 프로필`} width={66} height={66} /><div><small>{character ? '선택 캐릭터' : '기본 직업 소개'}</small><h3>{character ? characterDisplayName(character) : defaultCharacterName(key, accountNickname)}</h3><p>{character?.title ?? '게임 데이터 연결 시 상세정보가 표시됩니다.'}</p></div></div>
       <div className="selected-stats">{facts.map(([label, value]) => <div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
     </article>
   );

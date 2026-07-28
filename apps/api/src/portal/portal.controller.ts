@@ -13,7 +13,9 @@ export class PortalController {
     if (!session.authenticated) {
       throw new UnauthorizedException({ code: 'AUTH_REQUIRED', message: '로그인이 필요합니다.' });
     }
-    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    response.setHeader('Pragma', 'no-cache');
+    response.setHeader('Vary', 'Cookie');
     return this.portal.dashboard(session.botUid);
   }
 }

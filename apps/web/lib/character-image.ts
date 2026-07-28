@@ -1,4 +1,4 @@
-import type { PortalCharacter } from './api';
+import type { PortalCharacter, PortalDashboard } from './api';
 
 export type CharacterJob = PortalCharacter['job'];
 export type CharacterGender = PortalCharacter['gender'];
@@ -11,11 +11,53 @@ export const DEFAULT_PORTAL_CHARACTER: PortalCharacter = Object.freeze({
   current: true,
 });
 
+const characterJobLabels: Record<CharacterJob, string> = {
+  warrior: '전사',
+  archer: '궁수',
+  mage: '마법사',
+};
+
+function nicknameFromCharacter(character: PortalCharacter) {
+  const name = character.name?.trim();
+  if (!name) return '';
+  const label = characterJobLabels[character.job];
+  const suffix = `의 ${label}`;
+  return name.endsWith(suffix) ? name.slice(0, -suffix.length).trim() : '';
+}
+
+export function resolvePortalNickname(dashboard: PortalDashboard | undefined) {
+  if (!dashboard) return '';
+  const characters = dashboard.characters ?? [];
+  const orderedCharacters = [
+    ...characters.filter((character) => character.current),
+    ...characters.filter((character) => !character.current),
+  ];
+  for (const character of orderedCharacters) {
+    const nickname = nicknameFromCharacter(character);
+    if (nickname) return nickname;
+  }
+  for (const system of dashboard.systems ?? []) {
+    for (const category of system.rankings?.categories ?? []) {
+      const nickname = category.rows.find((row) => row.current)?.nickname?.trim();
+      if (nickname) return nickname;
+    }
+  }
+  return '';
+}
+
+export function defaultCharacterName(job: CharacterJob, nickname: string) {
+  const owner = nickname.trim();
+  return owner ? `${owner}의 ${characterJobLabels[job]}` : `이름 없는 ${characterJobLabels[job]}`;
+}
+
 // Display-only fallback: it never writes a character or UID back to the RPG service.
 export function charactersWithDisplayFallback(
   characters: readonly PortalCharacter[] | undefined,
+  nickname = '',
 ): readonly PortalCharacter[] {
-  return characters?.length ? characters : [DEFAULT_PORTAL_CHARACTER];
+  return characters?.length
+    ? characters
+    : [{ ...DEFAULT_PORTAL_CHARACTER, name: defaultCharacterName('warrior', nickname) }];
 }
 
 const genderAliases: Record<string, CharacterGender> = {

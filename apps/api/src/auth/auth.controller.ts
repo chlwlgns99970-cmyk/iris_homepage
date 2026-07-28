@@ -17,6 +17,12 @@ function requestSubject(request: Request) {
   return request.ip || request.socket.remoteAddress || 'unknown';
 }
 
+function setPrivateSessionHeaders(response: Response) {
+  response.setHeader('Cache-Control', 'private, no-store, max-age=0');
+  response.setHeader('Pragma', 'no-cache');
+  response.setHeader('Vary', 'Cookie');
+}
+
 @Controller('api/auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
@@ -52,6 +58,7 @@ export class AuthController {
   ) {
     await this.auth.enforceRateLimit('complete', requestSubject(request), 10, 60);
     const result = await this.auth.complete(body.requestId, body.deviceSecret);
+    setPrivateSessionHeaders(response);
     response.cookie(
       this.auth.config.cookieName,
       result.sessionToken,
@@ -67,7 +74,11 @@ export class AuthController {
   }
 
   @Get('me')
-  me(@Headers('cookie') cookie: string | undefined) {
+  me(
+    @Headers('cookie') cookie: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    setPrivateSessionHeaders(response);
     return this.auth.me(this.auth.readSessionToken(cookie));
   }
 
@@ -77,6 +88,7 @@ export class AuthController {
     @Headers('cookie') cookie: string | undefined,
     @Res({ passthrough: true }) response: Response,
   ) {
+    setPrivateSessionHeaders(response);
     const result = await this.auth.logout(this.auth.readSessionToken(cookie));
     response.clearCookie(
       this.auth.config.cookieName,
