@@ -11,7 +11,7 @@ export const DEFAULT_PORTAL_CHARACTER: PortalCharacter = Object.freeze({
   current: true,
 });
 
-// Display-only fallback: never writes a character or UID back to the RPG service.
+// Display-only fallback: it never writes a character or UID back to the RPG service.
 export function charactersWithDisplayFallback(
   characters: readonly PortalCharacter[] | undefined,
 ): readonly PortalCharacter[] {

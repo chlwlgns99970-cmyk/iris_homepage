@@ -1,5 +1,6 @@
 const SEOUL_TIME_ZONE = 'Asia/Seoul';
 
+// Session boundaries follow Korean calendar days regardless of the server timezone.
 export function nextSeoulMidnight(now = new Date()): Date {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: SEOUL_TIME_ZONE,
