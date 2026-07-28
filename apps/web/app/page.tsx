@@ -17,6 +17,7 @@ import {
   type PortalSystem,
 } from '@/lib/api';
 import {
+  charactersWithDisplayFallback,
   resolveAccountGender,
   resolveCharacterImage,
   resolveEffectiveGender,
@@ -204,7 +205,9 @@ function DashboardSection({ auth, state, selectedCharacter, selectedSystem, sele
 }) {
   const systems = state.status === 'success' ? state.data.systems : [];
   const generatedAt = state.status === 'success' ? state.data.meta.generatedAt : '';
-  const characters = state.status === 'success' ? state.data.characters ?? [] : [];
+  const characters = state.status === 'success'
+    ? charactersWithDisplayFallback(state.data.characters)
+    : [];
   const character = characters.find((item) => item.job === selectedCharacter)
     ?? characters.find((item) => item.current)
     ?? characters[0];
@@ -373,7 +376,9 @@ function SystemContent({ content }: { content: PortalContent }) {
 }
 
 function CharacterSection({ state, selected, select }: { state: DashboardState; selected: string; select: (job: string) => void }) {
-  const characters = state.status === 'success' ? state.data.characters ?? [] : [];
+  const characters = state.status === 'success'
+    ? charactersWithDisplayFallback(state.data.characters)
+    : [];
   const accountGender = resolveAccountGender(characters);
   const selectedData = characters.find((character) => character.job === selected);
   return (

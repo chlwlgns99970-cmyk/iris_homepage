@@ -4,6 +4,19 @@ export type CharacterJob = PortalCharacter['job'];
 export type CharacterGender = PortalCharacter['gender'];
 export type CharacterImageVariant = 'card' | 'profile';
 
+export const DEFAULT_PORTAL_CHARACTER: PortalCharacter = Object.freeze({
+  id: 'warrior',
+  job: 'warrior',
+  gender: 'unknown',
+  current: true,
+});
+
+export function charactersWithDisplayFallback(
+  characters: readonly PortalCharacter[] | undefined,
+): readonly PortalCharacter[] {
+  return characters?.length ? characters : [DEFAULT_PORTAL_CHARACTER];
+}
+
 const genderAliases: Record<string, CharacterGender> = {
   male: 'male',
   m: 'male',

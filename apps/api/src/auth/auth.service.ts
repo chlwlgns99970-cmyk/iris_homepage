@@ -23,6 +23,7 @@ import {
   safeHashEqual,
   safeSecretEqual,
 } from './auth.crypto';
+import { nextSeoulMidnight } from './auth.time';
 
 const INVALID_CODE = {
   code: 'WEB_AUTH_CODE_INVALID',
@@ -207,7 +208,7 @@ export class AuthService {
     const sessionToken = generateSecret();
     const sessionHash = hmac(sessionToken, this.config.sessionSecret);
     const now = new Date();
-    const sessionExpiresAt = new Date(now.getTime() + this.config.sessionTtlMs);
+    const sessionExpiresAt = nextSeoulMidnight(now);
 
     const result = await this.prisma.$transaction(async (tx) => {
       const account = await tx.webAccount.upsert({
@@ -283,6 +284,7 @@ export class AuthService {
       secure: this.config.secureCookie,
       sameSite: 'lax',
       path: '/',
+      expires: expiresAt,
       maxAge: expiresAt ? Math.max(0, expiresAt.getTime() - Date.now()) : this.config.sessionTtlMs,
     };
   }
