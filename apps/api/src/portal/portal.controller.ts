@@ -9,13 +9,13 @@ export class PortalController {
 
   @Get('dashboard')
   async dashboard(@Headers('cookie') cookie: string | undefined, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    response.setHeader('Pragma', 'no-cache');
+    response.setHeader('Vary', 'Cookie');
     const session = await this.auth.me(this.auth.readSessionToken(cookie));
     if (!session.authenticated) {
       throw new UnauthorizedException({ code: 'AUTH_REQUIRED', message: '로그인이 필요합니다.' });
     }
-    response.setHeader('Cache-Control', 'private, no-store, max-age=0');
-    response.setHeader('Pragma', 'no-cache');
-    response.setHeader('Vary', 'Cookie');
     return this.portal.dashboard(session.botUid);
   }
 }
