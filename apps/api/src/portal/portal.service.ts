@@ -35,7 +35,11 @@ export class PortalService {
         throw new BadGatewayException({ code: 'PORTAL_PROVIDER_UNAVAILABLE', message: 'RPG 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' });
       }
       const data = parsePortalDashboard(JSON.parse(text));
-      this.cache.set(botUid, { expiresAt: Date.now() + this.config.cacheTtlMs, data });
+      if (data.characters.length > 0) {
+        this.cache.set(botUid, { expiresAt: Date.now() + this.config.cacheTtlMs, data });
+      } else {
+        this.cache.delete(botUid);
+      }
       return data;
     } catch (error) {
       if (error instanceof NotFoundException || error instanceof BadGatewayException) throw error;

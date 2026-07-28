@@ -62,12 +62,14 @@ describe('PortalService user isolation', () => {
   });
 
   it('accepts the current bot provider shape without inventing an administrator UID', async () => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({
-      ...dashboard('토도리'),
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(JSON.stringify({
+      ...dashboard('단지얌'),
       characters: [],
     }), { status: 200 }));
+    const service = new PortalService();
 
-    const result = await new PortalService().dashboard('00000002');
+    const result = await service.dashboard('00000007');
+    const repeated = await service.dashboard('00000007');
 
     expect(result.meta).toEqual({
       version: 1,
@@ -75,5 +77,7 @@ describe('PortalService user isolation', () => {
     });
     expect(result.meta).not.toHaveProperty('uid');
     expect(result.characters).toEqual([]);
+    expect(repeated.characters).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

@@ -3,13 +3,13 @@ import type { PortalCharacter, PortalDashboard } from './api';
 export type CharacterJob = PortalCharacter['job'];
 export type CharacterGender = PortalCharacter['gender'];
 export type CharacterImageVariant = 'card' | 'profile';
+export type DisplayPortalCharacter = PortalCharacter & { displayFallback?: true };
 
-export const DEFAULT_PORTAL_CHARACTER: PortalCharacter = Object.freeze({
-  id: 'warrior',
-  job: 'warrior',
-  gender: 'unknown',
-  current: true,
-});
+export const DEFAULT_PORTAL_CHARACTERS: readonly DisplayPortalCharacter[] = Object.freeze([
+  Object.freeze({ id: 'fallback-warrior', job: 'warrior', gender: 'unknown', current: true, displayFallback: true }),
+  Object.freeze({ id: 'fallback-archer', job: 'archer', gender: 'unknown', displayFallback: true }),
+  Object.freeze({ id: 'fallback-mage', job: 'mage', gender: 'unknown', displayFallback: true }),
+]);
 
 const characterJobLabels: Record<CharacterJob, string> = {
   warrior: '전사',
@@ -54,10 +54,19 @@ export function defaultCharacterName(job: CharacterJob, nickname: string) {
 export function charactersWithDisplayFallback(
   characters: readonly PortalCharacter[] | undefined,
   nickname = '',
-): readonly PortalCharacter[] {
+): readonly DisplayPortalCharacter[] {
   return characters?.length
     ? characters
-    : [{ ...DEFAULT_PORTAL_CHARACTER, name: defaultCharacterName('warrior', nickname) }];
+    : DEFAULT_PORTAL_CHARACTERS.map((character) => ({
+      ...character,
+      name: defaultCharacterName(character.job, nickname),
+    }));
+}
+
+export function isDisplayFallbackCharacter(
+  character: DisplayPortalCharacter | undefined,
+) {
+  return character?.displayFallback === true;
 }
 
 const genderAliases: Record<string, CharacterGender> = {

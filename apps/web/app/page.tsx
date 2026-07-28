@@ -19,6 +19,7 @@ import {
 import {
   charactersWithDisplayFallback,
   defaultCharacterName,
+  isDisplayFallbackCharacter,
   resolveAccountGender,
   resolveCharacterImage,
   resolveEffectiveGender,
@@ -386,28 +387,30 @@ function SystemContent({ content }: { content: PortalContent }) {
 }
 
 function CharacterSection({ state, selected, select }: { state: DashboardState; selected: string; select: (job: string) => void }) {
+  const sourceCharacters = state.status === 'success' ? state.data.characters ?? [] : [];
   const accountNickname = state.status === 'success'
     ? resolvePortalNickname(state.data)
     : '';
   const characters = state.status === 'success'
-    ? charactersWithDisplayFallback(state.data.characters, accountNickname)
+    ? charactersWithDisplayFallback(sourceCharacters, accountNickname)
     : [];
   const accountGender = resolveAccountGender(characters);
   const selectedData = characters.find((character) => character.job === selected);
   return (
     <section className="character-section" id="characters">
       <SectionHeading eyebrow="MY CHARACTER SLOTS" title="내 캐릭터 슬롯" description="직업별 기본 외형과 실제 슬롯 데이터를 확인합니다.">
-        <span className="collection-count">{characters.length ? `${characters.length}개 슬롯` : '슬롯 데이터 대기'}</span>
+        <span className="collection-count">{sourceCharacters.length ? `${sourceCharacters.length}개 슬롯` : '기본 외형 3종'}</span>
       </SectionHeading>
       <div className="character-grid">
         {(Object.entries(characterVisuals) as [keyof typeof characterVisuals, typeof characterVisuals[keyof typeof characterVisuals]][]).map(([job, visual]) => {
           const character = characters.find((item) => item.job === job);
+          const displayFallback = isDisplayFallbackCharacter(character);
           return (
             <article className={`character-card ${selected === job ? 'active' : ''}`} key={job}>
-              <div className="character-image-wrap"><div className="character-art"><Image src={resolveCharacterImage(job, resolveEffectiveGender(character?.gender, accountGender), 'card')} alt={`${visual.label} 기본 캐릭터`} fill sizes="(max-width: 620px) 82vw, 33vw" /></div><span className="slot-label">{visual.label.toUpperCase()}</span>{character && <span className="selected-mark">{character.current ? '현재 직업' : '보유 슬롯'}</span>}</div>
+              <div className="character-image-wrap"><div className="character-art"><Image src={resolveCharacterImage(job, resolveEffectiveGender(character?.gender, accountGender), 'card')} alt={`${visual.label} 기본 캐릭터`} fill sizes="(max-width: 620px) 82vw, 33vw" /></div><span className="slot-label">{visual.label.toUpperCase()}</span>{character && !displayFallback && <span className="selected-mark">{character.current ? '현재 직업' : '보유 슬롯'}</span>}</div>
               <div className="character-card-body"><small>{visual.label} 기본 외형</small><h3>{character?.name ?? defaultCharacterName(job, accountNickname)}</h3>
-                {character ? <CharacterFacts character={character} /> : <p>실제 슬롯 정보가 연결되면 레벨·전투력·장비가 표시됩니다.</p>}
-                <button type="button" onClick={() => select(job)}>{character ? '상세 보기' : '기본 외형 보기'}</button>
+                {character && !displayFallback ? <CharacterFacts character={character} /> : <p>저장된 캐릭터 설정이 없어 화면 기본 외형을 표시합니다.</p>}
+                <button type="button" onClick={() => select(job)}>{character && !displayFallback ? '상세 보기' : '기본 외형 보기'}</button>
               </div>
             </article>
           );
@@ -441,13 +444,14 @@ function SelectedCharacter({ selected, character, accountGender, accountNickname
 }) {
   const key = selected in characterVisuals ? selected as keyof typeof characterVisuals : 'warrior';
   const visual = characterVisuals[key];
+  const displayFallback = isDisplayFallbackCharacter(character);
   const facts = [
     ['직업', visual.label], ['레벨', character?.level], ['전투력', character?.power],
     ['장착 무기', character?.weapon], ['환생', character?.rebirth], ['탑', character?.tower], ['레이드', character?.raid],
   ].filter((item): item is [string, string] => Boolean(item[1]));
   return (
     <article className="selected-dashboard">
-      <div className="selected-profile"><Image src={resolveCharacterImage(key, resolveEffectiveGender(character?.gender, accountGender), 'profile')} alt={`${visual.label} 프로필`} width={66} height={66} /><div><small>{character ? '선택 캐릭터' : '기본 직업 소개'}</small><h3>{character ? characterDisplayName(character) : defaultCharacterName(key, accountNickname)}</h3><p>{character?.title ?? '게임 데이터 연결 시 상세정보가 표시됩니다.'}</p></div></div>
+      <div className="selected-profile"><Image src={resolveCharacterImage(key, resolveEffectiveGender(character?.gender, accountGender), 'profile')} alt={`${visual.label} 프로필`} width={66} height={66} /><div><small>{character && !displayFallback ? '선택 캐릭터' : '기본 직업 소개'}</small><h3>{character ? characterDisplayName(character) : defaultCharacterName(key, accountNickname)}</h3><p>{displayFallback ? '저장된 설정 없이 화면 기본 외형만 표시합니다.' : character?.title ?? '게임 데이터 연결 시 상세정보가 표시됩니다.'}</p></div></div>
       <div className="selected-stats">{facts.map(([label, value]) => <div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
     </article>
   );
