@@ -65,6 +65,8 @@ describe('PortalService user isolation', () => {
     const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(JSON.stringify({
       ...dashboard('단지얌'),
       characters: [],
+      accountGender: 'female',
+      accountNickname: '단지얌',
     }), { status: 200 }));
     const service = new PortalService();
 
@@ -77,6 +79,8 @@ describe('PortalService user isolation', () => {
     });
     expect(result.meta).not.toHaveProperty('uid');
     expect(result.characters).toEqual([]);
+    expect(result.accountGender).toBe('female');
+    expect(result.accountNickname).toBe('단지얌');
     expect(repeated.characters).toEqual([]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });

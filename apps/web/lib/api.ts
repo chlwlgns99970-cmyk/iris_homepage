@@ -149,6 +149,8 @@ export type PortalArtwork = {
 
 export type PortalDashboard = {
   meta: { version: number; generatedAt: string };
+  accountGender?: PortalCharacter['gender'];
+  accountNickname?: string;
   systems: PortalSystem[];
   characters?: PortalCharacter[];
   artworks?: PortalArtwork[];

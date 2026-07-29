@@ -7,7 +7,11 @@ describe('portal response validation', () => {
   };
 
   it('accepts the bot dashboard shape without requiring a UID', () => {
-    expect(parsePortalDashboard(valid)).toEqual(valid);
+    expect(parsePortalDashboard(valid)).toEqual({
+      ...valid,
+      accountGender: 'unknown',
+      accountNickname: '',
+    });
   });
 
   it('does not expose provider identity fields', () => {
@@ -17,7 +21,11 @@ describe('portal response validation', () => {
       accountKey: 'provider-account',
       meta: { ...valid.meta, uid: 'provider-identity' },
     });
-    expect(parsed).toEqual(valid);
+    expect(parsed).toEqual({
+      ...valid,
+      accountGender: 'unknown',
+      accountNickname: '',
+    });
     expect(parsed).not.toHaveProperty('uid');
     expect(parsed).not.toHaveProperty('accountKey');
     expect(parsed.meta).not.toHaveProperty('uid');
@@ -55,5 +63,35 @@ describe('portal response validation', () => {
         { id: 'warrior-2', job: 'warrior', gender: 'female' },
       ],
     })).toThrow('invalid response');
+  });
+
+  it.each([
+    ['male', 'male'],
+    ['남성', 'male'],
+    ['female', 'female'],
+    ['여자', 'female'],
+    [undefined, 'unknown'],
+    ['private', 'unknown'],
+  ] as const)('normalizes account gender %s to %s', (accountGender, expected) => {
+    expect(parsePortalDashboard({
+      ...valid,
+      accountGender,
+      accountNickname: '단지얌',
+    })).toMatchObject({
+      accountGender: expected,
+      accountNickname: '단지얌',
+    });
+  });
+
+  it('treats malformed characters as empty and does not expose identity fields', () => {
+    const parsed = parsePortalDashboard({
+      ...valid,
+      characters: { uid: 'private' },
+      accountNickname: undefined,
+      senderId: 'private',
+    });
+    expect(parsed.characters).toEqual([]);
+    expect(parsed.accountNickname).toBe('');
+    expect(parsed).not.toHaveProperty('senderId');
   });
 });

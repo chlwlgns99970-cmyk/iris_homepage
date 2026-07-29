@@ -217,7 +217,11 @@ function DashboardSection({ auth, state, selectedCharacter, selectedSystem, sele
     ? resolvePortalNickname(state.data)
     : '';
   const characters = state.status === 'success'
-    ? charactersWithDisplayFallback(state.data.characters, accountNickname)
+    ? charactersWithDisplayFallback(
+      state.data.characters,
+      accountNickname,
+      state.data.accountGender,
+    )
     : [];
   const character = characters.find((item) => item.job === selectedCharacter)
     ?? characters.find((item) => item.current)
@@ -392,7 +396,11 @@ function CharacterSection({ state, selected, select }: { state: DashboardState; 
     ? resolvePortalNickname(state.data)
     : '';
   const characters = state.status === 'success'
-    ? charactersWithDisplayFallback(sourceCharacters, accountNickname)
+    ? charactersWithDisplayFallback(
+      sourceCharacters,
+      accountNickname,
+      state.data.accountGender,
+    )
     : [];
   const accountGender = resolveAccountGender(characters);
   const selectedData = characters.find((character) => character.job === selected);

@@ -27,7 +27,12 @@ function nicknameFromCharacter(character: PortalCharacter) {
 
 export function resolvePortalNickname(dashboard: PortalDashboard | undefined) {
   if (!dashboard) return '';
-  const characters = dashboard.characters ?? [];
+  const characters = Array.isArray(dashboard.characters) ? dashboard.characters : [];
+  if (characters.length === 0) {
+    return typeof dashboard.accountNickname === 'string'
+      ? dashboard.accountNickname.trim()
+      : '';
+  }
   const orderedCharacters = [
     ...characters.filter((character) => character.current),
     ...characters.filter((character) => !character.current),
@@ -52,13 +57,18 @@ export function defaultCharacterName(job: CharacterJob, nickname: string) {
 
 // Display-only fallback: it never writes a character or UID back to the RPG service.
 export function charactersWithDisplayFallback(
-  characters: readonly PortalCharacter[] | undefined,
+  characters: unknown,
   nickname = '',
+  gender: unknown = 'unknown',
 ): readonly DisplayPortalCharacter[] {
-  return characters?.length
-    ? characters
+  const safeCharacters = Array.isArray(characters)
+    ? characters as readonly PortalCharacter[]
+    : [];
+  return safeCharacters.length
+    ? safeCharacters
     : DEFAULT_PORTAL_CHARACTERS.map((character) => ({
       ...character,
+      gender: normalizeGender(gender),
       name: defaultCharacterName(character.job, nickname),
     }));
 }
@@ -128,8 +138,9 @@ export function normalizeJob(value: unknown): CharacterJob | 'unknown' {
 }
 
 export function resolveAccountGender(
-  characters: readonly PortalCharacter[],
+  characters: unknown,
 ): CharacterGender {
+  if (!Array.isArray(characters)) return 'unknown';
   const current = characters.find((character) => character.current);
   const currentGender = normalizeGender(current?.gender);
   if (currentGender !== 'unknown') return currentGender;
