@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import {
   ApiError,
   getCurrentAuth,
@@ -20,9 +20,11 @@ import {
   charactersWithDisplayFallback,
   defaultCharacterName,
   isDisplayFallbackCharacter,
+  orderCharacterJobsForDisplay,
   resolveAccountGender,
   resolveCharacterImage,
   resolveEffectiveGender,
+  resolvePortalCurrentJob,
   resolvePortalNickname,
 } from '@/lib/character-image';
 
@@ -32,6 +34,7 @@ type AuthState =
 type DashboardState =
   | { status: 'idle' | 'loading' | 'unconfigured' | 'not-found' | 'error' }
   | { status: 'success'; data: PortalDashboard };
+type MobileTabId = 'characters' | 'equipment' | 'growth' | 'rankings';
 
 const characterVisuals = {
   warrior: { label: '전사' },
@@ -45,6 +48,25 @@ const galleryVisuals = [
   { id: 'level100', image: '/assets/level100.webp', title: '레벨 100 일러스트', description: '성장 달성 기록' },
   { id: 'palace', image: '/assets/palace.webp', title: '왕궁 일러스트', description: '왕궁 달성 기록' },
 ] as const;
+const emptyPortalCharacters: readonly PortalCharacter[] = [];
+
+const mobileTabs: readonly { id: MobileTabId; label: string; icon: string }[] = [
+  { id: 'characters', label: '캐릭터', icon: '◈' },
+  { id: 'equipment', label: '장비·가방', icon: '⚔' },
+  { id: 'growth', label: '재화·성장', icon: '✦' },
+  { id: 'rankings', label: '랭킹·기록', icon: '♛' },
+];
+
+const equipmentSystemIds = new Set(['bag', 'equipment', 'titles']);
+const growthSystemIds = new Set([
+  'profile',
+  'attendance',
+  'boss',
+  'weekly-boss',
+  'raid',
+  'tower',
+  'palace',
+]);
 
 export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -52,6 +74,7 @@ export default function Home() {
   const [dashboard, setDashboard] = useState<DashboardState>({ status: 'idle' });
   const [selectedSystem, setSelectedSystem] = useState('');
   const [selectedCharacter, setSelectedCharacter] = useState('warrior');
+  const [mobileTab, setMobileTab] = useState<MobileTabId>('characters');
   const [toast, setToast] = useState('');
   const authenticatedBotUid = auth.status === 'authenticated' ? auth.botUid : null;
 
@@ -79,12 +102,13 @@ export default function Home() {
     getPortalDashboard()
       .then((data) => {
         if (!active) return;
+        const currentJob = resolvePortalCurrentJob(data);
         setDashboard({ status: 'success', data });
         setSelectedSystem(data.systems[0]?.id ?? '');
         setSelectedCharacter(
-          data.characters?.find((character) => character.current)?.job
-            ?? data.characters?.[0]?.job
-            ?? 'warrior',
+          currentJob === 'unknown'
+            ? data.characters?.[0]?.job ?? 'warrior'
+            : currentJob,
         );
       })
       .catch((error: unknown) => {
@@ -106,6 +130,7 @@ export default function Home() {
       setDashboard({ status: 'idle' });
       setSelectedSystem('');
       setSelectedCharacter('warrior');
+      setMobileTab('characters');
       setToast('로그아웃되었습니다.');
     } catch (error) {
       setToast(error instanceof Error ? error.message : '로그아웃하지 못했습니다.');
@@ -120,26 +145,39 @@ export default function Home() {
         closeMenu={() => setMenuOpen(false)}
         toggleMenu={() => setMenuOpen((open) => !open)}
         signOut={signOut}
+        selectMobileTab={setMobileTab}
       />
       <main id="home">
-        <WorldHero authenticated={auth.status === 'authenticated'} />
-        <DashboardSection
+        <div className="desktop-home">
+          <WorldHero authenticated={auth.status === 'authenticated'} />
+          <DashboardSection
+            auth={auth}
+            state={dashboard}
+            selectedCharacter={selectedCharacter}
+            selectedSystem={selectedSystem}
+            selectSystem={setSelectedSystem}
+          />
+          <CharacterSection
+            state={dashboard}
+            selected={selectedCharacter}
+            select={setSelectedCharacter}
+          />
+          <GallerySection state={dashboard} />
+          <PremiumSection />
+          <RankingSection state={dashboard} />
+        </div>
+        <MobileDashboard
           auth={auth}
           state={dashboard}
+          activeTab={mobileTab}
+          selectTab={setMobileTab}
           selectedCharacter={selectedCharacter}
+          selectCharacter={setSelectedCharacter}
           selectedSystem={selectedSystem}
           selectSystem={setSelectedSystem}
         />
-        <CharacterSection
-          state={dashboard}
-          selected={selectedCharacter}
-          select={setSelectedCharacter}
-        />
-        <GallerySection state={dashboard} />
-        <PremiumSection />
-        <RankingSection state={dashboard} />
       </main>
-      <Footer />
+      <div className="desktop-footer"><Footer /></div>
       <div className={`toast ${toast ? 'show' : ''}`} role="status" onTransitionEnd={() => {
         if (toast) window.setTimeout(() => setToast(''), 1800);
       }}>{toast}</div>
@@ -147,13 +185,22 @@ export default function Home() {
   );
 }
 
-function Header({ auth, menuOpen, closeMenu, toggleMenu, signOut }: {
+function Header({ auth, menuOpen, closeMenu, toggleMenu, signOut, selectMobileTab }: {
   auth: AuthState;
   menuOpen: boolean;
   closeMenu: () => void;
   toggleMenu: () => void;
   signOut: () => void;
+  selectMobileTab: (tab: MobileTabId) => void;
 }) {
+  function navigate(event: React.MouseEvent<HTMLAnchorElement>, tab: MobileTabId) {
+    closeMenu();
+    if (window.matchMedia('(max-width: 768px)').matches) {
+      event.preventDefault();
+      selectMobileTab(tab);
+    }
+  }
+
   return (
     <header className="topbar">
       <a className="brand" href="#home" aria-label="홈으로 이동" onClick={closeMenu}>
@@ -162,10 +209,10 @@ function Header({ auth, menuOpen, closeMenu, toggleMenu, signOut }: {
       </a>
       <button className="menu-button" type="button" aria-label="메뉴 열기" aria-expanded={menuOpen} onClick={toggleMenu}>☰</button>
       <nav className={menuOpen ? 'open' : ''}>
-        <a href="#dashboard" onClick={closeMenu}>게임 대시보드</a>
-        <a href="#characters" onClick={closeMenu}>내 캐릭터</a>
-        <a href="#gallery" onClick={closeMenu}>일러스트</a>
-        <a href="#ranking" onClick={closeMenu}>랭킹</a>
+        <a href="#dashboard" onClick={(event) => navigate(event, 'growth')}>게임 대시보드</a>
+        <a href="#characters" onClick={(event) => navigate(event, 'characters')}>내 캐릭터</a>
+        <a href="#gallery" onClick={(event) => navigate(event, 'characters')}>일러스트</a>
+        <a href="#ranking" onClick={(event) => navigate(event, 'rankings')}>랭킹</a>
       </nav>
       {auth.status === 'authenticated' ? (
         <div className="account-cluster">
@@ -204,6 +251,208 @@ function WorldHero({ authenticated }: { authenticated: boolean }) {
   );
 }
 
+function MobileDashboard({
+  auth,
+  state,
+  activeTab,
+  selectTab,
+  selectedCharacter,
+  selectCharacter,
+  selectedSystem,
+  selectSystem,
+}: {
+  auth: AuthState;
+  state: DashboardState;
+  activeTab: MobileTabId;
+  selectTab: (tab: MobileTabId) => void;
+  selectedCharacter: string;
+  selectCharacter: (job: string) => void;
+  selectedSystem: string;
+  selectSystem: (id: string) => void;
+}) {
+  const dashboard = state.status === 'success' ? state.data : undefined;
+  const accountNickname = resolvePortalNickname(dashboard);
+  const currentJob = resolvePortalCurrentJob(dashboard);
+  const characters = useMemo(
+    () => dashboard
+      ? charactersWithDisplayFallback(
+        dashboard.characters,
+        accountNickname,
+        dashboard.accountGender,
+        currentJob,
+      )
+      : [],
+    [accountNickname, currentJob, dashboard],
+  );
+  const currentCharacter = characters.find((character) => character.job === currentJob)
+    ?? characters[0];
+  const equipmentSystems = useMemo(
+    () => dashboard?.systems.filter((system) => equipmentSystemIds.has(system.id)) ?? [],
+    [dashboard],
+  );
+  const growthSystems = useMemo(
+    () => dashboard?.systems.filter((system) => growthSystemIds.has(system.id)) ?? [],
+    [dashboard],
+  );
+  const activeTabDefinition = mobileTabs.find((tab) => tab.id === activeTab) ?? mobileTabs[0];
+
+  return (
+    <section className="mobile-dashboard" id="mobile-dashboard" aria-label="모바일 게임 대시보드">
+      <header className="mobile-dashboard-summary">
+        <div className="mobile-summary-heading">
+          <div>
+            <span>{state.status === 'success' ? '오늘의 모험가' : '나테베 RPG'}</span>
+            <strong>{currentCharacter ? characterDisplayName(currentCharacter) : '웹 인증이 필요합니다'}</strong>
+            <small>{currentCharacter ? characterJobLevel(currentCharacter) : '카카오톡 계정으로 연결해 주세요.'}</small>
+          </div>
+          <span className={`sync-chip ${state.status === 'success' ? 'live' : ''}`}>
+            <i /> {dashboardBadge(auth, state)}
+          </span>
+        </div>
+        {dashboard?.summary && (
+          <div className="mobile-summary-metrics">
+            {dashboard.summary.slice(1, 3).map(([label, value]) => (
+              <div key={label}><small>{label}</small><b>{value}</b></div>
+            ))}
+          </div>
+        )}
+      </header>
+
+      <div
+        className="mobile-dashboard-panel"
+        id={`mobile-panel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`mobile-tab-${activeTab}`}
+        tabIndex={0}
+      >
+        {auth.status !== 'authenticated' ? (
+          <MobileStateMessage title="웹 인증 후 내 캐릭터를 확인하세요.">
+            당일 자정까지 같은 브라우저에서 인증이 유지됩니다.
+            <Link className="button primary" href="/connect">웹 인증 시작</Link>
+          </MobileStateMessage>
+        ) : state.status === 'loading' ? (
+          <MobileStateMessage title="게임 데이터를 불러오는 중입니다.">잠시만 기다려 주세요.</MobileStateMessage>
+        ) : state.status !== 'success' ? (
+          <MobileStateMessage title="게임 데이터를 표시하지 못했습니다.">잠시 후 다시 시도해 주세요.</MobileStateMessage>
+        ) : activeTab === 'characters' ? (
+          <>
+            <CharacterSection
+              state={state}
+              selected={selectedCharacter}
+              select={selectCharacter}
+              mobile
+            />
+            <GallerySection state={state} mobile />
+            <PremiumSection mobile />
+          </>
+        ) : activeTab === 'equipment' ? (
+          <MobileSystemGroup
+            systems={equipmentSystems}
+            selectedSystem={selectedSystem}
+            selectSystem={selectSystem}
+            generatedAt={state.data.meta.generatedAt}
+            characterContext={`${characterDisplayName(currentCharacter)} · ${characterJobLevel(currentCharacter)}`}
+          />
+        ) : activeTab === 'growth' ? (
+          <>
+            {state.data.summary && state.data.summary.length > 0 && (
+              <div className="mobile-growth-summary">
+                {state.data.summary.map((metric) => <Metric key={metric[0]} metric={metric} />)}
+              </div>
+            )}
+            <MobileSystemGroup
+              systems={growthSystems}
+              selectedSystem={selectedSystem}
+              selectSystem={selectSystem}
+              generatedAt={state.data.meta.generatedAt}
+              characterContext={`${characterDisplayName(currentCharacter)} · ${characterJobLevel(currentCharacter)}`}
+            />
+          </>
+        ) : (
+          <RankingSection state={state} mobile />
+        )}
+      </div>
+
+      <MobileTabBar activeTab={activeTabDefinition.id} selectTab={selectTab} />
+    </section>
+  );
+}
+
+function MobileSystemGroup({ systems, selectedSystem, selectSystem, generatedAt, characterContext }: {
+  systems: PortalSystem[];
+  selectedSystem: string;
+  selectSystem: (id: string) => void;
+  generatedAt: string;
+  characterContext: string;
+}) {
+  const active = systems.find((system) => system.id === selectedSystem) ?? systems[0];
+  if (!active) {
+    return <MobileStateMessage title="표시할 정보가 없습니다.">게임 데이터가 추가되면 이곳에 표시됩니다.</MobileStateMessage>;
+  }
+  return (
+    <div className="mobile-system-group">
+      <div className="feature-buttons mobile-feature-buttons" aria-label="세부 정보 선택">
+        {systems.map((system) => (
+          <button
+            className={`feature-button ${active.id === system.id ? 'active' : ''}`}
+            type="button"
+            key={system.id}
+            onClick={() => selectSystem(system.id)}
+          >
+            <span className="feature-button-icon" aria-hidden="true">{system.icon}</span>
+            <span className="feature-button-label">{system.title}</span>
+          </button>
+        ))}
+      </div>
+      <SystemPanel system={active} generatedAt={generatedAt} characterContext={characterContext} />
+    </div>
+  );
+}
+
+function MobileTabBar({ activeTab, selectTab }: {
+  activeTab: MobileTabId;
+  selectTab: (tab: MobileTabId) => void;
+}) {
+  function moveTab(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex = index;
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % mobileTabs.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + mobileTabs.length) % mobileTabs.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = mobileTabs.length - 1;
+    else return;
+    event.preventDefault();
+    const next = mobileTabs[nextIndex];
+    selectTab(next.id);
+    document.getElementById(`mobile-tab-${next.id}`)?.focus();
+  }
+
+  return (
+    <div className="mobile-dashboard-tabs" role="tablist" aria-label="대시보드 영역">
+      {mobileTabs.map((tab, index) => (
+        <button
+          className={activeTab === tab.id ? 'active' : ''}
+          id={`mobile-tab-${tab.id}`}
+          role="tab"
+          aria-selected={activeTab === tab.id}
+          aria-controls={`mobile-panel-${tab.id}`}
+          tabIndex={activeTab === tab.id ? 0 : -1}
+          type="button"
+          key={tab.id}
+          onClick={() => selectTab(tab.id)}
+          onKeyDown={(event) => moveTab(event, index)}
+        >
+          <span aria-hidden="true">{tab.icon}</span>
+          <b>{tab.label}</b>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MobileStateMessage({ title, children }: { title: string; children: React.ReactNode }) {
+  return <div className="mobile-state-message"><strong>{title}</strong><p>{children}</p></div>;
+}
+
 function DashboardSection({ auth, state, selectedCharacter, selectedSystem, selectSystem }: {
   auth: AuthState;
   state: DashboardState;
@@ -216,11 +465,15 @@ function DashboardSection({ auth, state, selectedCharacter, selectedSystem, sele
   const accountNickname = state.status === 'success'
     ? resolvePortalNickname(state.data)
     : '';
+  const currentJob = state.status === 'success'
+    ? resolvePortalCurrentJob(state.data)
+    : 'unknown';
   const characters = state.status === 'success'
     ? charactersWithDisplayFallback(
       state.data.characters,
       accountNickname,
       state.data.accountGender,
+      currentJob,
     )
     : [];
   const character = characters.find((item) => item.job === selectedCharacter)
@@ -390,32 +643,52 @@ function SystemContent({ content }: { content: PortalContent }) {
   );
 }
 
-function CharacterSection({ state, selected, select }: { state: DashboardState; selected: string; select: (job: string) => void }) {
-  const sourceCharacters = state.status === 'success' ? state.data.characters ?? [] : [];
+function CharacterSection({ state, selected, select, mobile = false }: {
+  state: DashboardState;
+  selected: string;
+  select: (job: string) => void;
+  mobile?: boolean;
+}) {
+  const sourceCharacters = state.status === 'success'
+    ? state.data.characters ?? emptyPortalCharacters
+    : emptyPortalCharacters;
   const accountNickname = state.status === 'success'
     ? resolvePortalNickname(state.data)
     : '';
-  const characters = state.status === 'success'
-    ? charactersWithDisplayFallback(
-      sourceCharacters,
-      accountNickname,
-      state.data.accountGender,
-    )
-    : [];
+  const currentJob = state.status === 'success'
+    ? resolvePortalCurrentJob(state.data)
+    : 'unknown';
+  const characters = useMemo(
+    () => state.status === 'success'
+      ? charactersWithDisplayFallback(
+        sourceCharacters,
+        accountNickname,
+        state.data.accountGender,
+        currentJob,
+      )
+      : [],
+    [accountNickname, currentJob, sourceCharacters, state],
+  );
+  const orderedJobs = useMemo(
+    () => orderCharacterJobsForDisplay(currentJob),
+    [currentJob],
+  );
   const accountGender = resolveAccountGender(characters);
   const selectedData = characters.find((character) => character.job === selected);
   return (
-    <section className="character-section" id="characters">
+    <section className={`character-section ${mobile ? 'mobile-character-section' : ''}`} id={mobile ? undefined : 'characters'}>
       <SectionHeading eyebrow="MY CHARACTER SLOTS" title="내 캐릭터 슬롯" description="직업별 기본 외형과 실제 슬롯 데이터를 확인합니다.">
         <span className="collection-count">{sourceCharacters.length ? `${sourceCharacters.length}개 슬롯` : '기본 외형 3종'}</span>
       </SectionHeading>
       <div className="character-grid">
-        {(Object.entries(characterVisuals) as [keyof typeof characterVisuals, typeof characterVisuals[keyof typeof characterVisuals]][]).map(([job, visual]) => {
+        {orderedJobs.map((job) => {
+          const visual = characterVisuals[job];
           const character = characters.find((item) => item.job === job);
           const displayFallback = isDisplayFallbackCharacter(character);
+          const isCurrentJob = currentJob === job;
           return (
-            <article className={`character-card ${selected === job ? 'active' : ''}`} key={job}>
-              <div className="character-image-wrap"><div className="character-art"><Image src={resolveCharacterImage(job, resolveEffectiveGender(character?.gender, accountGender), 'card')} alt={`${visual.label} 기본 캐릭터`} fill sizes="(max-width: 620px) 82vw, 33vw" /></div><span className="slot-label">{visual.label.toUpperCase()}</span>{character && !displayFallback && <span className="selected-mark">{character.current ? '현재 직업' : '보유 슬롯'}</span>}</div>
+            <article className={`character-card ${selected === job ? 'active' : ''} ${isCurrentJob ? 'current-job' : ''}`} key={job}>
+              <div className="character-image-wrap"><div className="character-art"><Image src={resolveCharacterImage(job, resolveEffectiveGender(character?.gender, accountGender), 'card')} alt={`${visual.label} 기본 캐릭터`} fill sizes={mobile ? '31vw' : '(max-width: 960px) 270px, 33vw'} /></div><span className="slot-label">{visual.label.toUpperCase()}</span>{character && <span className="selected-mark">{isCurrentJob ? '현재 직업' : displayFallback ? '기본 외형' : '보유 슬롯'}</span>}</div>
               <div className="character-card-body"><small>{visual.label} 기본 외형</small><h3>{character?.name ?? defaultCharacterName(job, accountNickname)}</h3>
                 {character && !displayFallback ? <CharacterFacts character={character} /> : <p>저장된 캐릭터 설정이 없어 화면 기본 외형을 표시합니다.</p>}
                 <button type="button" onClick={() => select(job)}>{character && !displayFallback ? '상세 보기' : '기본 외형 보기'}</button>
@@ -465,10 +738,10 @@ function SelectedCharacter({ selected, character, accountGender, accountNickname
   );
 }
 
-function GallerySection({ state }: { state: DashboardState }) {
+function GallerySection({ state, mobile = false }: { state: DashboardState; mobile?: boolean }) {
   const artworks = state.status === 'success' ? state.data.artworks ?? [] : [];
   return (
-    <section className="section" id="gallery">
+    <section className={`section ${mobile ? 'mobile-gallery-section' : ''}`} id={mobile ? undefined : 'gallery'}>
       <SectionHeading eyebrow="GROWTH ARCHIVE" title="일러스트 갤러리" description="제공된 일러스트 미리보기입니다. 소유·다운로드 권한은 서버 데이터로만 결정합니다.">
         <span className="collection-count">{artworks.length ? `보유 ${artworks.filter((art) => art.owned).length}개` : '소유 정보 연동 대기'}</span>
       </SectionHeading>
@@ -488,9 +761,9 @@ function GallerySection({ state }: { state: DashboardState }) {
   );
 }
 
-function PremiumSection() {
+function PremiumSection({ mobile = false }: { mobile?: boolean }) {
   return (
-    <section className="section premium-section" id="premium">
+    <section className={`section premium-section ${mobile ? 'mobile-premium-section' : ''}`} id={mobile ? undefined : 'premium'}>
       <SectionHeading eyebrow="COSMETIC SUPPORT" title="프리미엄 일러스트" description="능력치·재화·아이템 변화 없이 캐릭터 이미지와 개인 사용권만 제공합니다.">
         <span className="cosmetic-chip">결제 연동 준비중</span>
       </SectionHeading>
@@ -506,7 +779,7 @@ function PremiumSection() {
   );
 }
 
-function RankingSection({ state }: { state: DashboardState }) {
+function RankingSection({ state, mobile = false }: { state: DashboardState; mobile?: boolean }) {
   const [group, setGroup] = useState<'overall' | 'byJob' | 'hallOfFame'>('overall');
   const [overallId, setOverallId] = useState<PortalRankingCategory['id']>('power');
   const [jobId, setJobId] = useState<'warrior' | 'archer' | 'mage'>('warrior');
@@ -526,7 +799,7 @@ function RankingSection({ state }: { state: DashboardState }) {
   const hallOfFame = rankings?.hallOfFame ?? [];
 
   return (
-    <section className="section" id="ranking">
+    <section className={`section ${mobile ? 'mobile-ranking-section' : ''}`} id={mobile ? undefined : 'ranking'}>
       <SectionHeading eyebrow="HALL OF FAME" title="명예의 전당">
         <div className="tabs ranking-group-tabs" role="tablist" aria-label="랭킹 상위 분류">
           {([

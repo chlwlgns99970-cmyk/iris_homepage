@@ -4,7 +4,9 @@ import type { PortalDashboard } from './api.ts';
 import {
   charactersWithDisplayFallback,
   isDisplayFallbackCharacter,
+  orderCharacterJobsForDisplay,
   resolveCharacterImage,
+  resolvePortalCurrentJob,
   resolvePortalNickname,
 } from './character-image.ts';
 
@@ -12,7 +14,7 @@ const emptyCharacterDashboard: PortalDashboard = {
   meta: { version: 1, generatedAt: '2026-07-28T00:00:00.000Z' },
   accountGender: 'female',
   accountNickname: '단지얌',
-  summary: [],
+  summary: [['현재 직업', '마법사 · LV.10']],
   characters: [],
   artworks: [],
   systems: [{
@@ -112,4 +114,66 @@ test('stored characters stay byte-for-byte independent from account fallbacks', 
   const result = charactersWithDisplayFallback(stored, '다른 닉네임', 'male');
   assert.equal(result, stored);
   assert.deepEqual(result, stored);
+});
+
+test('current stored character is the authoritative current job', () => {
+  const dashboard: PortalDashboard = {
+    ...emptyCharacterDashboard,
+    summary: [['현재 직업', '전사 · LV.10']],
+    characters: [{
+      id: 'archer',
+      job: 'archer',
+      gender: 'female',
+      current: true,
+    }],
+  };
+  assert.equal(resolvePortalCurrentJob(dashboard), 'archer');
+});
+
+test('empty characters reuse the exact current-job summary metric', () => {
+  assert.equal(resolvePortalCurrentJob(emptyCharacterDashboard), 'mage');
+  const fallbacks = charactersWithDisplayFallback(
+    [],
+    '단지얌',
+    'female',
+    resolvePortalCurrentJob(emptyCharacterDashboard),
+  );
+  assert.deepEqual(
+    fallbacks.map(({ job, current }) => ({ job, current: current === true })),
+    [
+      { job: 'warrior', current: false },
+      { job: 'archer', current: false },
+      { job: 'mage', current: true },
+    ],
+  );
+});
+
+for (const [currentJob, expected] of [
+  ['warrior', ['archer', 'warrior', 'mage']],
+  ['archer', ['warrior', 'archer', 'mage']],
+  ['mage', ['warrior', 'mage', 'archer']],
+] as const) {
+  test(`current ${currentJob} job is placed in the visual center`, () => {
+    assert.deepEqual(orderCharacterJobsForDisplay(currentJob), expected);
+  });
+}
+
+test('unknown current job preserves the existing job order', () => {
+  assert.deepEqual(orderCharacterJobsForDisplay('unknown'), ['warrior', 'archer', 'mage']);
+  assert.deepEqual(orderCharacterJobsForDisplay(undefined), ['warrior', 'archer', 'mage']);
+});
+
+test('display ordering does not mutate stored character objects or arrays', () => {
+  const stored = [{
+    id: 'mage',
+    job: 'mage' as const,
+    gender: 'female' as const,
+    current: true,
+  }];
+  const before = JSON.stringify(stored);
+  orderCharacterJobsForDisplay(resolvePortalCurrentJob({
+    ...emptyCharacterDashboard,
+    characters: stored,
+  }));
+  assert.equal(JSON.stringify(stored), before);
 });

@@ -6,9 +6,15 @@ export type CharacterImageVariant = 'card' | 'profile';
 export type DisplayPortalCharacter = PortalCharacter & { displayFallback?: true };
 
 export const DEFAULT_PORTAL_CHARACTERS: readonly DisplayPortalCharacter[] = Object.freeze([
-  Object.freeze({ id: 'fallback-warrior', job: 'warrior', gender: 'unknown', current: true, displayFallback: true }),
+  Object.freeze({ id: 'fallback-warrior', job: 'warrior', gender: 'unknown', displayFallback: true }),
   Object.freeze({ id: 'fallback-archer', job: 'archer', gender: 'unknown', displayFallback: true }),
   Object.freeze({ id: 'fallback-mage', job: 'mage', gender: 'unknown', displayFallback: true }),
+]);
+
+export const DEFAULT_CHARACTER_JOB_ORDER: readonly CharacterJob[] = Object.freeze([
+  'warrior',
+  'archer',
+  'mage',
 ]);
 
 const characterJobLabels: Record<CharacterJob, string> = {
@@ -60,16 +66,21 @@ export function charactersWithDisplayFallback(
   characters: unknown,
   nickname = '',
   gender: unknown = 'unknown',
+  currentJob: unknown = 'unknown',
 ): readonly DisplayPortalCharacter[] {
   const safeCharacters = Array.isArray(characters)
     ? characters as readonly PortalCharacter[]
     : [];
+  const normalizedCurrentJob = normalizeJob(currentJob);
   return safeCharacters.length
     ? safeCharacters
     : DEFAULT_PORTAL_CHARACTERS.map((character) => ({
       ...character,
       gender: normalizeGender(gender),
       name: defaultCharacterName(character.job, nickname),
+      ...(normalizedCurrentJob === 'unknown'
+        ? {}
+        : { current: character.job === normalizedCurrentJob }),
     }));
 }
 
@@ -135,6 +146,29 @@ export function normalizeGender(value: unknown): CharacterGender {
 export function normalizeJob(value: unknown): CharacterJob | 'unknown' {
   if (typeof value !== 'string') return 'unknown';
   return jobAliases[value.trim().toLowerCase()] ?? 'unknown';
+}
+
+export function resolvePortalCurrentJob(
+  dashboard: PortalDashboard | undefined,
+): CharacterJob | 'unknown' {
+  if (!dashboard) return 'unknown';
+  const characters = Array.isArray(dashboard.characters) ? dashboard.characters : [];
+  const currentCharacter = characters.find((character) => character.current);
+  if (currentCharacter) return currentCharacter.job;
+
+  const currentJobMetric = dashboard.summary?.find(([label]) => label === '현재 직업');
+  if (!currentJobMetric) return 'unknown';
+  const [jobName = ''] = currentJobMetric[1].split('·', 1);
+  return normalizeJob(jobName);
+}
+
+export function orderCharacterJobsForDisplay(
+  currentJob: unknown,
+): readonly CharacterJob[] {
+  const normalizedCurrentJob = normalizeJob(currentJob);
+  if (normalizedCurrentJob === 'unknown') return DEFAULT_CHARACTER_JOB_ORDER;
+  const remaining = DEFAULT_CHARACTER_JOB_ORDER.filter((job) => job !== normalizedCurrentJob);
+  return [remaining[0], normalizedCurrentJob, remaining[1]];
 }
 
 export function resolveAccountGender(
