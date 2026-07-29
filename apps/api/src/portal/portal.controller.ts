@@ -16,6 +16,6 @@ export class PortalController {
     if (!session.authenticated) {
       throw new UnauthorizedException({ code: 'AUTH_REQUIRED', message: '로그인이 필요합니다.' });
     }
-    return this.portal.dashboard(session.botUid);
+    return this.portal.dashboard(session.botUid, { bypassCache: true });
   }
 }

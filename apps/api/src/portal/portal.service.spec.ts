@@ -61,6 +61,30 @@ describe('PortalService user isolation', () => {
     ]);
   });
 
+  it('bypasses only the authenticated user cache for a fresh dashboard read', async () => {
+    let version = 0;
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async () => {
+      version += 1;
+      return new Response(JSON.stringify({
+        ...dashboard('새로고침 사용자'),
+        systems: [{
+          id: 'attendance',
+          metrics: [['오늘 출석', version === 1 ? '미출석' : '출석 완료']],
+        }],
+      }), { status: 200 });
+    });
+    const service = new PortalService();
+
+    const first = await service.dashboard('00000002');
+    const cached = await service.dashboard('00000002');
+    const fresh = await service.dashboard('00000002', { bypassCache: true });
+
+    expect(first.systems).toEqual([{ id: 'attendance', metrics: [['오늘 출석', '미출석']] }]);
+    expect(cached).toBe(first);
+    expect(fresh.systems).toEqual([{ id: 'attendance', metrics: [['오늘 출석', '출석 완료']] }]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('accepts the current bot provider shape without inventing an administrator UID', async () => {
     const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(JSON.stringify({
       ...dashboard('단지얌'),

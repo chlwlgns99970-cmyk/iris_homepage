@@ -27,6 +27,11 @@ import {
   resolvePortalCurrentJob,
   resolvePortalNickname,
 } from '@/lib/character-image';
+import {
+  EQUIPMENT_MOBILE_SYSTEMS,
+  GROWTH_MOBILE_SYSTEMS,
+  stableMobileSystems,
+} from '@/lib/mobile-system-menu';
 
 type AuthState =
   | { status: 'loading' | 'guest' }
@@ -56,17 +61,6 @@ const mobileTabs: readonly { id: MobileTabId; label: string; icon: string }[] = 
   { id: 'growth', label: '재화·성장', icon: '✦' },
   { id: 'rankings', label: '랭킹·기록', icon: '♛' },
 ];
-
-const equipmentSystemIds = new Set(['bag', 'equipment', 'titles']);
-const growthSystemIds = new Set([
-  'profile',
-  'attendance',
-  'boss',
-  'weekly-boss',
-  'raid',
-  'tower',
-  'palace',
-]);
 
 export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -287,11 +281,11 @@ function MobileDashboard({
   const currentCharacter = characters.find((character) => character.job === currentJob)
     ?? characters[0];
   const equipmentSystems = useMemo(
-    () => dashboard?.systems.filter((system) => equipmentSystemIds.has(system.id)) ?? [],
+    () => stableMobileSystems(dashboard?.systems, EQUIPMENT_MOBILE_SYSTEMS),
     [dashboard],
   );
   const growthSystems = useMemo(
-    () => dashboard?.systems.filter((system) => growthSystemIds.has(system.id)) ?? [],
+    () => stableMobileSystems(dashboard?.systems, GROWTH_MOBILE_SYSTEMS),
     [dashboard],
   );
   const activeTabDefinition = mobileTabs.find((tab) => tab.id === activeTab) ?? mobileTabs[0];

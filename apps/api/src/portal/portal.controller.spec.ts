@@ -20,7 +20,7 @@ describe('PortalController authenticated UID routing', () => {
     await new PortalController(auth, portal).dashboard('cookie', response);
 
     expect(portal.dashboard).toHaveBeenCalledTimes(1);
-    expect(portal.dashboard).toHaveBeenCalledWith('00000002');
+    expect(portal.dashboard).toHaveBeenCalledWith('00000002', { bypassCache: true });
     expect(response.setHeader).toHaveBeenCalledWith('Cache-Control', 'private, no-store, max-age=0');
     expect(response.setHeader).toHaveBeenCalledWith('Pragma', 'no-cache');
     expect(response.setHeader).toHaveBeenCalledWith('Vary', 'Cookie');

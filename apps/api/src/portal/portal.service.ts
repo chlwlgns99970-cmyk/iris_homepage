@@ -7,10 +7,11 @@ export class PortalService {
   private readonly config = getPortalConfig();
   private readonly cache = new Map<string, { expiresAt: number; data: PortalDashboard }>();
 
-  async dashboard(botUid: string) {
+  async dashboard(botUid: string, { bypassCache = false }: { bypassCache?: boolean } = {}) {
     if (!this.config.enabled) {
       throw new ServiceUnavailableException({ code: 'PORTAL_DASHBOARD_NOT_CONFIGURED', message: 'RPG 대시보드 연결이 아직 구성되지 않았습니다.' });
     }
+    if (bypassCache) this.cache.delete(botUid);
     const cached = this.cache.get(botUid);
     if (cached && cached.expiresAt > Date.now()) return cached.data;
     const controller = new AbortController();
