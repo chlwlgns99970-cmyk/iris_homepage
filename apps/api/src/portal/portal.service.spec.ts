@@ -83,6 +83,10 @@ describe('PortalService user isolation', () => {
     expect(cached).toBe(first);
     expect(fresh.systems).toEqual([{ id: 'attendance', metrics: [['오늘 출석', '출석 완료']] }]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      cache: 'no-store',
+      headers: expect.objectContaining({ 'cache-control': 'no-cache' }),
+    });
   });
 
   it('accepts the current bot provider shape without inventing an administrator UID', async () => {

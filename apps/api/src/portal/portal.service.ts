@@ -19,9 +19,14 @@ export class PortalService {
     try {
       const response = await fetch(`${this.config.url}/internal/portal/dashboard`, {
         method: 'POST',
+        cache: 'no-store',
         redirect: 'error',
         signal: controller.signal,
-        headers: { 'content-type': 'application/json', 'x-bot-internal-api-token': this.config.token },
+        headers: {
+          'cache-control': 'no-cache',
+          'content-type': 'application/json',
+          'x-bot-internal-api-token': this.config.token,
+        },
         body: JSON.stringify({ botUid }),
       });
       const length = Number(response.headers.get('content-length') || 0);

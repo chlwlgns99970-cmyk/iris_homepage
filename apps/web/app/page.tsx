@@ -32,6 +32,7 @@ import {
   GROWTH_MOBILE_SYSTEMS,
   stableMobileSystems,
 } from '@/lib/mobile-system-menu';
+import { shouldRefreshDashboard } from '@/lib/dashboard-refresh';
 
 type AuthState =
   | { status: 'loading' | 'guest' }
@@ -93,28 +94,64 @@ export default function Home() {
       return;
     }
     let active = true;
-    getPortalDashboard()
-      .then((data) => {
+    let requestInFlight = false;
+    let lastRequestedAt = 0;
+
+    const refreshDashboard = async (initial: boolean) => {
+      const requestedAt = Date.now();
+      if (requestInFlight || (!initial && !shouldRefreshDashboard(lastRequestedAt, requestedAt))) {
+        return;
+      }
+      requestInFlight = true;
+      lastRequestedAt = requestedAt;
+      if (initial) setDashboard({ status: 'loading' });
+      try {
+        const data = await getPortalDashboard();
         if (!active) return;
         const currentJob = resolvePortalCurrentJob(data);
         setDashboard({ status: 'success', data });
-        setSelectedSystem(data.systems[0]?.id ?? '');
+        setSelectedSystem((selected) => (
+          data.systems.some(({ id }) => id === selected)
+            ? selected
+            : data.systems[0]?.id ?? ''
+        ));
         setSelectedCharacter(
           currentJob === 'unknown'
             ? data.characters?.[0]?.job ?? 'warrior'
             : currentJob,
         );
-      })
-      .catch((error: unknown) => {
+      } catch (error: unknown) {
         if (!active) return;
-        const status = error instanceof ApiError && error.code === 'PORTAL_USER_NOT_FOUND'
-          ? 'not-found'
-          : error instanceof ApiError && error.code === 'PORTAL_DASHBOARD_NOT_CONFIGURED'
-            ? 'unconfigured'
-            : 'error';
-        setDashboard({ status });
-      });
-    return () => { active = false; };
+        if (initial) {
+          const status = error instanceof ApiError && error.code === 'PORTAL_USER_NOT_FOUND'
+            ? 'not-found'
+            : error instanceof ApiError && error.code === 'PORTAL_DASHBOARD_NOT_CONFIGURED'
+              ? 'unconfigured'
+              : 'error';
+          setDashboard({ status });
+        }
+      } finally {
+        requestInFlight = false;
+      }
+    };
+
+    const refreshVisibleDashboard = () => {
+      if (document.visibilityState === 'visible') void refreshDashboard(false);
+    };
+    const refreshRestoredDashboard = () => {
+      void refreshDashboard(false);
+    };
+
+    void refreshDashboard(true);
+    document.addEventListener('visibilitychange', refreshVisibleDashboard);
+    window.addEventListener('focus', refreshVisibleDashboard);
+    window.addEventListener('pageshow', refreshRestoredDashboard);
+    return () => {
+      active = false;
+      document.removeEventListener('visibilitychange', refreshVisibleDashboard);
+      window.removeEventListener('focus', refreshVisibleDashboard);
+      window.removeEventListener('pageshow', refreshRestoredDashboard);
+    };
   }, [authenticatedBotUid]);
 
   async function signOut() {
