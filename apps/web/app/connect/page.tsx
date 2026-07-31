@@ -11,6 +11,10 @@ import {
   startDeviceAuth,
   type DeviceStartResponse,
 } from '@/lib/api';
+import {
+  AUTH_SESSION_BROWSER_NOTICE,
+  AUTH_SESSION_PRIMARY_NOTICE,
+} from '@/lib/auth-session-policy';
 
 const STORAGE_KEY = 'natebe_web_auth_device';
 type ViewState = 'starting' | 'pending' | 'approved' | 'completing' | 'success' | 'expired' | 'cancelled' | 'logged_out' | 'error';
@@ -202,6 +206,9 @@ export default function ConnectPage() {
         <section className="connect-card" aria-live="polite">
           <p className="eyebrow">KAKAO DEVICE AUTH</p>
           <h1>카카오톡 계정 인증</h1>
+          <p className="connect-muted">
+            {AUTH_SESSION_PRIMARY_NOTICE}<br />{AUTH_SESSION_BROWSER_NOTICE}
+          </p>
           {view === 'starting' && <p>안전한 인증 요청을 준비하고 있습니다.</p>}
           {view === 'pending' && deviceRequest && (
             <>

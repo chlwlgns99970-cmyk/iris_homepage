@@ -33,6 +33,10 @@ import {
   stableMobileSystems,
 } from '@/lib/mobile-system-menu';
 import { shouldRefreshDashboard } from '@/lib/dashboard-refresh';
+import {
+  AUTH_SESSION_BROWSER_NOTICE,
+  AUTH_SESSION_PRIMARY_NOTICE,
+} from '@/lib/auth-session-policy';
 
 type AuthState =
   | { status: 'loading' | 'guest' }
@@ -358,7 +362,7 @@ function MobileDashboard({
       >
         {auth.status !== 'authenticated' ? (
           <MobileStateMessage title="웹 인증 후 내 캐릭터를 확인하세요.">
-            당일 자정까지 같은 브라우저에서 인증이 유지됩니다.
+            <span>{AUTH_SESSION_PRIMARY_NOTICE}<br />{AUTH_SESSION_BROWSER_NOTICE}</span>
             <Link className="button primary" href="/connect">웹 인증 시작</Link>
           </MobileStateMessage>
         ) : state.status === 'loading' ? (
@@ -539,7 +543,7 @@ function DashboardSection({ auth, state, selectedCharacter, selectedSystem, sele
       )}
       {auth.status !== 'authenticated' ? (
         <DashboardMessage title="개인 게임 데이터는 로그인 후 표시됩니다.">
-          카카오톡에서 발급한 일회용 코드로 웹 인증을 완료해 주세요.
+          <span>{AUTH_SESSION_PRIMARY_NOTICE}<br />{AUTH_SESSION_BROWSER_NOTICE}</span>
           <Link className="button primary" href="/connect">웹 인증 시작</Link>
         </DashboardMessage>
       ) : state.status === 'loading' ? (

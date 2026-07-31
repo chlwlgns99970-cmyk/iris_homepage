@@ -23,7 +23,7 @@ import {
   safeHashEqual,
   safeSecretEqual,
 } from './auth.crypto';
-import { nextSeoulMidnight } from './auth.time';
+import { fixedWebSessionExpiry } from './auth.time';
 
 const INVALID_CODE = {
   code: 'WEB_AUTH_CODE_INVALID',
@@ -187,7 +187,11 @@ export class AuthService {
     });
   }
 
-  async complete(requestId: string, deviceSecret: string) {
+  async complete(
+    requestId: string,
+    deviceSecret: string,
+    currentSessionToken: string | null = null,
+  ) {
     const request = await this.verifiedRequest(requestId, deviceSecret);
     if (request.expiresAt.getTime() <= Date.now()) {
       throw new GoneException({
@@ -208,7 +212,7 @@ export class AuthService {
     const sessionToken = generateSecret();
     const sessionHash = hmac(sessionToken, this.config.sessionSecret);
     const now = new Date();
-    const sessionExpiresAt = nextSeoulMidnight(now);
+    const sessionExpiresAt = fixedWebSessionExpiry(now);
 
     const result = await this.prisma.$transaction(async (tx) => {
       const account = await tx.webAccount.upsert({
@@ -242,6 +246,15 @@ export class AuthService {
         throw new ConflictException({
           code: 'WEB_AUTH_REQUEST_CONSUMED',
           message: '이미 완료되었거나 승인되지 않은 인증 요청입니다.',
+        });
+      }
+      if (currentSessionToken) {
+        await tx.webSession.updateMany({
+          where: {
+            sessionHash: hmac(currentSessionToken, this.config.sessionSecret),
+            revokedAt: null,
+          },
+          data: { revokedAt: now },
         });
       }
       await tx.webSession.create({

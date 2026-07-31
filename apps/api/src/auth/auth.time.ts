@@ -1,19 +1,11 @@
-const SEOUL_TIME_ZONE = 'Asia/Seoul';
+export const WEB_SESSION_DURATION_SECONDS = 2_592_000;
+export const WEB_SESSION_DURATION_MS = WEB_SESSION_DURATION_SECONDS * 1_000;
 
-// Session boundaries follow Korean calendar days regardless of the server timezone.
-export function nextSeoulMidnight(now = new Date()): Date {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: SEOUL_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
-  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  const year = Number(value.year);
-  const month = Number(value.month);
-  const day = Number(value.day);
-  if (![year, month, day].every(Number.isSafeInteger)) {
-    throw new Error('Unable to calculate the Seoul session boundary');
+// The expiry is fixed at issuance and is never extended by later requests.
+export function fixedWebSessionExpiry(issuedAt = new Date()): Date {
+  const issuedAtMs = issuedAt.getTime();
+  if (!Number.isFinite(issuedAtMs)) {
+    throw new Error('Unable to calculate the web session expiry');
   }
-  return new Date(Date.UTC(year, month - 1, day + 1, -9, 0, 0, 0));
+  return new Date(issuedAtMs + WEB_SESSION_DURATION_MS);
 }

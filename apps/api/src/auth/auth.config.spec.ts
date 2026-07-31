@@ -1,5 +1,6 @@
 import { getWebAuthConfig } from './auth.config';
 import { generateSecret, generateUserCode, hmac, safeSecretEqual } from './auth.crypto';
+import { WEB_SESSION_DURATION_MS } from './auth.time';
 
 describe('web authentication configuration and secrets', () => {
   it('keeps web auth disabled without requiring secrets', () => {
@@ -7,6 +8,7 @@ describe('web authentication configuration and secrets', () => {
       enabled: false,
       cookieName: 'natebe_session',
       secureCookie: false,
+      sessionTtlMs: WEB_SESSION_DURATION_MS,
     });
   });
 
@@ -22,6 +24,9 @@ describe('web authentication configuration and secrets', () => {
     expect(() => getWebAuthConfig({ ...base, SESSION_SECRET: 'short' })).toThrow();
     expect(() => getWebAuthConfig({ ...base, SESSION_SECRET: 't'.repeat(32) })).toThrow(
       '웹 인증 비밀값은 서로 달라야 합니다.',
+    );
+    expect(() => getWebAuthConfig({ ...base, WEB_SESSION_TTL_MS: '604800000' })).toThrow(
+      `WEB_SESSION_TTL_MS는 ${WEB_SESSION_DURATION_MS}이어야 합니다.`,
     );
   });
 

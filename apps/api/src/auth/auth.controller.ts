@@ -54,10 +54,15 @@ export class AuthController {
   async complete(
     @Body() body: DeviceCredentialDto,
     @Req() request: Request,
+    @Headers('cookie') cookie: string | undefined,
     @Res({ passthrough: true }) response: Response,
   ) {
     await this.auth.enforceRateLimit('complete', requestSubject(request), 10, 60);
-    const result = await this.auth.complete(body.requestId, body.deviceSecret);
+    const result = await this.auth.complete(
+      body.requestId,
+      body.deviceSecret,
+      this.auth.readSessionToken(cookie),
+    );
     setPrivateSessionHeaders(response);
     response.cookie(
       this.auth.config.cookieName,

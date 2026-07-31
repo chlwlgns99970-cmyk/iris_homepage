@@ -10,6 +10,7 @@ const originalEnvironment = {
   WEB_AUTH_INTERNAL_TOKEN: process.env.WEB_AUTH_INTERNAL_TOKEN,
   TOKEN_HASH_SECRET: process.env.TOKEN_HASH_SECRET,
   SESSION_SECRET: process.env.SESSION_SECRET,
+  WEB_SESSION_TTL_MS: process.env.WEB_SESSION_TTL_MS,
 };
 
 function configureAuthentication() {
@@ -18,6 +19,7 @@ function configureAuthentication() {
   process.env.WEB_AUTH_INTERNAL_TOKEN = 'i'.repeat(32);
   process.env.TOKEN_HASH_SECRET = 't'.repeat(32);
   process.env.SESSION_SECRET = 's'.repeat(32);
+  process.env.WEB_SESSION_TTL_MS = '2592000000';
 }
 
 function restoreEnvironment() {
@@ -27,7 +29,7 @@ function restoreEnvironment() {
   }
 }
 
-describe('AuthService Korean-calendar browser sessions', () => {
+describe('AuthService fixed 30-day browser sessions', () => {
   beforeEach(() => {
     configureAuthentication();
   });
@@ -44,7 +46,7 @@ describe('AuthService Korean-calendar browser sessions', () => {
       {} as PrismaService,
       {} as RedisService,
     );
-    const expiresAt = new Date('2026-07-29T15:00:00.000Z');
+    const expiresAt = new Date('2026-08-28T12:30:00.000Z');
 
     expect(service.sessionCookieOptions(expiresAt)).toEqual({
       httpOnly: true,
@@ -52,12 +54,12 @@ describe('AuthService Korean-calendar browser sessions', () => {
       sameSite: 'lax',
       path: '/',
       expires: expiresAt,
-      maxAge: 9_000_000,
+      maxAge: 2_592_000_000,
     });
     expect(service.sessionCookieOptions(expiresAt)).not.toHaveProperty('domain');
   });
 
-  it('stores the same next-Seoul-midnight boundary in the durable session record', async () => {
+  it('stores the same fixed 30-day boundary in the durable session record', async () => {
     const now = new Date('2026-07-29T12:30:00.000Z');
     jest.useFakeTimers().setSystemTime(now);
     const deviceSecret = 'browser-device-secret';
@@ -73,7 +75,10 @@ describe('AuthService Korean-calendar browser sessions', () => {
       webLoginRequest: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
-      webSession: { create: webSessionCreate },
+      webSession: {
+        create: webSessionCreate,
+        updateMany: jest.fn(),
+      },
     };
     const prisma = {
       webLoginRequest: {
@@ -91,12 +96,97 @@ describe('AuthService Korean-calendar browser sessions', () => {
 
     const result = await service.complete('request-1', deviceSecret);
 
-    expect(result.expiresAt.toISOString()).toBe('2026-07-29T15:00:00.000Z');
+    expect(result.expiresAt.toISOString()).toBe('2026-08-28T12:30:00.000Z');
     expect(webSessionCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
         webAccountId: 'account-1',
-        expiresAt: new Date('2026-07-29T15:00:00.000Z'),
+        expiresAt: new Date('2026-08-28T12:30:00.000Z'),
       }),
+    });
+  });
+
+  it('rotates the current browser session when authentication succeeds again', async () => {
+    const now = new Date('2026-07-29T12:30:00.000Z');
+    jest.useFakeTimers().setSystemTime(now);
+    const deviceSecret = 'browser-device-secret';
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      webAccount: {
+        upsert: jest.fn().mockResolvedValue({
+          id: 'account-1',
+          botUid: '00000001',
+          status: WebAccountStatus.ACTIVE,
+        }),
+      },
+      webLoginRequest: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      webSession: {
+        updateMany,
+        create: jest.fn().mockResolvedValue({ id: 'session-2' }),
+      },
+    };
+    const prisma = {
+      webLoginRequest: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'request-1',
+          status: WebLoginRequestStatus.APPROVED,
+          approvedBotUid: '00000001',
+          expiresAt: new Date(now.getTime() + 60_000),
+          deviceSecretHash: hmac(deviceSecret, 't'.repeat(32)),
+        }),
+      },
+      $transaction: jest.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
+    } as unknown as PrismaService;
+    const service = new AuthService(prisma, {} as RedisService);
+
+    await service.complete('request-1', deviceSecret, 'current-session-token');
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        sessionHash: hmac('current-session-token', 's'.repeat(32)),
+        revokedAt: null,
+      },
+      data: { revokedAt: now },
+    });
+  });
+
+  it('remains valid through 29 days 23:59 and never rolls the expiry forward', async () => {
+    const issuedAt = new Date('2026-07-29T12:30:00.000Z');
+    const expiresAt = new Date(issuedAt.getTime() + 2_592_000_000);
+    jest.useFakeTimers().setSystemTime(
+      new Date(expiresAt.getTime() - 60_000),
+    );
+    const update = jest.fn().mockResolvedValue({});
+    const prisma = {
+      webSession: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'session-1',
+          revokedAt: null,
+          expiresAt,
+          webAccount: {
+            botUid: '00000001',
+            status: WebAccountStatus.ACTIVE,
+          },
+        }),
+        update,
+      },
+    } as unknown as PrismaService;
+    const service = new AuthService(prisma, {} as RedisService);
+
+    await expect(service.me('valid-session')).resolves.toEqual({
+      authenticated: true,
+      botUid: '00000001',
+    });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'session-1' },
+      data: { lastSeenAt: expect.any(Date) },
+    });
+    expect(update.mock.calls[0]?.[0]?.data).not.toHaveProperty('expiresAt');
+
+    jest.setSystemTime(expiresAt);
+    await expect(service.me('expired-session')).resolves.toEqual({
+      authenticated: false,
     });
   });
 

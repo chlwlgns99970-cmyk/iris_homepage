@@ -34,6 +34,7 @@ describe('API contracts', () => {
     process.env.WEB_AUTH_INTERNAL_TOKEN = 'internal-e2e-token-value-1234567890';
     process.env.TOKEN_HASH_SECRET = 'token-hash-e2e-secret-value-1234567';
     process.env.SESSION_SECRET = 'session-e2e-secret-value-1234567890';
+    process.env.WEB_SESSION_TTL_MS = '2592000000';
     process.env.WEB_SESSION_COOKIE_NAME = 'natebe_session_e2e';
     app = (
       await Test.createTestingModule({
@@ -202,12 +203,17 @@ describe('API contracts', () => {
     expect(cookie).toContain('HttpOnly');
     expect(cookie).toContain('SameSite=Lax');
     expect(cookie).toContain('Path=/');
+    expect(cookie).toContain('Max-Age=2592000');
     expect(JSON.stringify(completed.body)).not.toContain('sessionToken');
 
     const session = await prisma.webSession.findFirst({
       where: { webAccount: { botUid: testBotUid } },
     });
     expect(session?.sessionHash).not.toContain(cookie.split('=')[1]?.split(';')[0]);
+    const cookieExpires = /Expires=([^;]+)/.exec(cookie)?.[1];
+    expect(cookieExpires).toBeDefined();
+    expect(session?.expiresAt.toUTCString()).toBe(cookieExpires);
+    expect(session!.expiresAt.getTime() - session!.createdAt.getTime()).toBe(2_592_000_000);
 
     await request(app!.getHttpServer())
       .get('/api/auth/me')

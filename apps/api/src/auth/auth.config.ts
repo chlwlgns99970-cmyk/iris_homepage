@@ -1,4 +1,5 @@
 import { ServiceUnavailableException } from '@nestjs/common';
+import { WEB_SESSION_DURATION_MS } from './auth.time';
 
 function positiveInteger(value: string | undefined, fallback: number, name: string) {
   const parsed = Number(value ?? fallback);
@@ -31,7 +32,14 @@ export type WebAuthConfig = {
 export function getWebAuthConfig(env: NodeJS.ProcessEnv = process.env): WebAuthConfig {
   const enabled = String(env.WEB_AUTH_ENABLED).toLowerCase() === 'true';
   const requestTtlMs = positiveInteger(env.WEB_AUTH_REQUEST_TTL_MS, 300000, 'WEB_AUTH_REQUEST_TTL_MS');
-  const sessionTtlMs = positiveInteger(env.WEB_SESSION_TTL_MS, 604800000, 'WEB_SESSION_TTL_MS');
+  const sessionTtlMs = positiveInteger(
+    env.WEB_SESSION_TTL_MS,
+    WEB_SESSION_DURATION_MS,
+    'WEB_SESSION_TTL_MS',
+  );
+  if (sessionTtlMs !== WEB_SESSION_DURATION_MS) {
+    throw new Error(`WEB_SESSION_TTL_MS는 ${WEB_SESSION_DURATION_MS}이어야 합니다.`);
+  }
   const cleanupRetentionMs = positiveInteger(
     env.WEB_AUTH_CLEANUP_RETENTION_MS,
     604800000,
