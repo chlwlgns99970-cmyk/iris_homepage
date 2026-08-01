@@ -174,6 +174,8 @@ export class ApiError extends Error {
   }
 }
 
+export const AUTH_API_TIMEOUT_MS = 10_000;
+
 export function buildRequestInit(init: RequestInit = {}): RequestInit {
   const headers = new Headers(init.headers);
   const hasBody = init.body !== undefined && init.body !== null;
@@ -200,6 +202,24 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function authApi<T>(path: string, init?: RequestInit): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AUTH_API_TIMEOUT_MS);
+  try {
+    return await api<T>(path, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new ApiError(408, {
+        code: 'WEB_AUTH_REQUEST_TIMEOUT',
+        message: '인증 서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.',
+      });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export const getNotices = () =>
   api<{ items: NoticeSummary[] }>('/api/notices?limit=10');
 
@@ -216,34 +236,34 @@ export const linkAccount = (uid: string, code: string) =>
   });
 
 export const startDeviceAuth = () =>
-  api<DeviceStartResponse>('/api/auth/device/start', { method: 'POST' });
+  authApi<DeviceStartResponse>('/api/auth/device/start', { method: 'POST' });
 
 export const restartDeviceAuth = () =>
-  api<DeviceStartResponse>('/api/auth/device/restart', { method: 'POST' });
+  authApi<DeviceStartResponse>('/api/auth/device/restart', { method: 'POST' });
 
 export const pollDeviceAuth = (requestId: string, deviceSecret: string) =>
-  api<DevicePollResponse>('/api/auth/device/poll', {
+  authApi<DevicePollResponse>('/api/auth/device/poll', {
     method: 'POST',
     body: JSON.stringify({ requestId, deviceSecret }),
   });
 
 export const completeDeviceAuth = (requestId: string, deviceSecret: string) =>
-  api<{ authenticated: true; botUid: string }>('/api/auth/device/complete', {
+  authApi<{ authenticated: true; botUid: string }>('/api/auth/device/complete', {
     method: 'POST',
     body: JSON.stringify({ requestId, deviceSecret }),
   });
 
 export const cancelDeviceAuth = (requestId: string, deviceSecret: string) =>
-  api<{ status: string }>('/api/auth/device/cancel', {
+  authApi<{ status: string }>('/api/auth/device/cancel', {
     method: 'POST',
     body: JSON.stringify({ requestId, deviceSecret }),
   });
 
 export const getCurrentAuth = () =>
-  api<{ authenticated: false } | { authenticated: true; botUid: string }>('/api/auth/me');
+  authApi<{ authenticated: false } | { authenticated: true; botUid: string }>('/api/auth/me');
 
 export const logout = () =>
-  api<{ success: true }>('/api/auth/logout', { method: 'POST' });
+  authApi<{ success: true }>('/api/auth/logout', { method: 'POST' });
 
 export const getPortalDashboard = () =>
   api<PortalDashboard>('/api/portal/dashboard');

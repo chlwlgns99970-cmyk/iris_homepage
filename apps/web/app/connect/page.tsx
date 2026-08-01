@@ -26,6 +26,8 @@ export default function ConnectPage() {
   const [approvedUid, setApprovedUid] = useState('');
   const [message, setMessage] = useState('');
   const startedRef = useRef(false);
+  const completingRef = useRef(false);
+  const renewingRef = useRef(false);
 
   const clearRequest = useCallback(() => {
     setDeviceRequest(null);
@@ -66,7 +68,7 @@ export default function ConnectPage() {
   }, []);
 
   useEffect(() => {
-    if (!deviceRequest || view !== 'pending') return;
+    if (!deviceRequest) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -81,15 +83,24 @@ export default function ConnectPage() {
         const result = await pollDeviceAuth(deviceRequest!.requestId, deviceRequest!.deviceSecret);
         if (!active) return;
         if (result.status === 'approved') {
+          if (completingRef.current) return;
+          completingRef.current = true;
           setView('completing');
-          const completed = await completeDeviceAuth(
-            deviceRequest!.requestId,
-            deviceRequest!.deviceSecret,
-          );
-          if (!active) return;
-          clearRequest();
-          setApprovedUid(completed.botUid);
-          setView('success');
+          try {
+            const completed = await completeDeviceAuth(
+              deviceRequest!.requestId,
+              deviceRequest!.deviceSecret,
+            );
+            if (!active) return;
+            clearRequest();
+            setApprovedUid(completed.botUid);
+            setView('success');
+          } catch (error) {
+            if (!active) return;
+            completingRef.current = false;
+            setMessage(error instanceof Error ? error.message : '로그인을 완료하지 못했습니다.');
+            setView('error');
+          }
           return;
         }
         if (result.status === 'expired' || result.status === 'consumed') {
@@ -115,10 +126,12 @@ export default function ConnectPage() {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [clearRequest, deviceRequest, view]);
+  }, [clearRequest, deviceRequest]);
 
   async function renew() {
+    if (renewingRef.current) return;
     if (!window.confirm('새 인증코드를 발급하면 기존 요청은 취소됩니다. 계속할까요?')) return;
+    renewingRef.current = true;
     setView('starting');
     setMessage('');
     try {
@@ -128,6 +141,8 @@ export default function ConnectPage() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '새 인증 요청을 만들지 못했습니다.');
       setView('error');
+    } finally {
+      renewingRef.current = false;
     }
   }
 
@@ -213,7 +228,7 @@ export default function ConnectPage() {
           {view === 'expired' && <StateMessage title="인증 요청이 만료되었습니다." />}
           {view === 'cancelled' && <StateMessage title="인증 요청을 취소했습니다." />}
           {view === 'logged_out' && <StateMessage title="로그아웃되었습니다." />}
-          {view === 'error' && <StateMessage title="웹 인증을 진행하지 못했습니다." detail={message} />}
+          {view === 'error' && <StateMessage title="웹 인증을 진행하지 못했습니다." detail={message} actionLabel="다시 시도" />}
           {message && view !== 'error' && <p className="connect-notice" role="status">{message}</p>}
         </section>
       </main>
@@ -221,12 +236,20 @@ export default function ConnectPage() {
   );
 }
 
-function StateMessage({ title, detail }: { title: string; detail?: string }) {
+function StateMessage({
+  title,
+  detail,
+  actionLabel = '새 인증 요청',
+}: {
+  title: string;
+  detail?: string;
+  actionLabel?: string;
+}) {
   return (
     <>
       <h2>{title}</h2>
       {detail && <p>{detail}</p>}
-      <a className="button primary" href="/connect">새 인증 요청</a>
+      <a className="button primary" href="/connect">{actionLabel}</a>
     </>
   );
 }
