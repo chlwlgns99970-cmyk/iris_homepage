@@ -218,6 +218,9 @@ export const linkAccount = (uid: string, code: string) =>
 export const startDeviceAuth = () =>
   api<DeviceStartResponse>('/api/auth/device/start', { method: 'POST' });
 
+export const restartDeviceAuth = () =>
+  api<DeviceStartResponse>('/api/auth/device/restart', { method: 'POST' });
+
 export const pollDeviceAuth = (requestId: string, deviceSecret: string) =>
   api<DevicePollResponse>('/api/auth/device/poll', {
     method: 'POST',

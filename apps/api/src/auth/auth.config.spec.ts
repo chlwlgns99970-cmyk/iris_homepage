@@ -7,6 +7,7 @@ describe('web authentication configuration and secrets', () => {
     expect(getWebAuthConfig({ NODE_ENV: 'development', WEB_AUTH_ENABLED: 'false' })).toMatchObject({
       enabled: false,
       cookieName: 'natebe_session',
+      pendingCookieName: 'natebe_session_pending',
       secureCookie: false,
       sessionTtlMs: WEB_SESSION_DURATION_MS,
     });
@@ -20,7 +21,11 @@ describe('web authentication configuration and secrets', () => {
       TOKEN_HASH_SECRET: 't'.repeat(32),
       SESSION_SECRET: 's'.repeat(32),
     };
-    expect(getWebAuthConfig(base)).toMatchObject({ enabled: true, secureCookie: true });
+    expect(getWebAuthConfig(base)).toMatchObject({
+      enabled: true,
+      pendingCookieName: 'natebe_session_pending',
+      secureCookie: true,
+    });
     expect(() => getWebAuthConfig({ ...base, SESSION_SECRET: 'short' })).toThrow();
     expect(() => getWebAuthConfig({ ...base, SESSION_SECRET: 't'.repeat(32) })).toThrow(
       '웹 인증 비밀값은 서로 달라야 합니다.',

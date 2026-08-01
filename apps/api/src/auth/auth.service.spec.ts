@@ -224,3 +224,131 @@ describe('AuthService fixed 30-day browser sessions', () => {
     expect(prisma.webSession.update).not.toHaveBeenCalled();
   });
 });
+
+describe('AuthService resumable device requests', () => {
+  beforeEach(() => {
+    configureAuthentication();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    restoreEnvironment();
+  });
+
+  function pendingStore() {
+    let sequence = 0;
+    const records = new Map<string, Record<string, unknown>>();
+    const create = jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      sequence += 1;
+      const id = `00000000-0000-4000-8000-${String(sequence).padStart(12, '0')}`;
+      records.set(id, {
+        id,
+        status: WebLoginRequestStatus.PENDING,
+        approvedBotUid: null,
+        ...data,
+      });
+      return { id };
+    });
+    const updateMany = jest.fn(async ({ where, data }: {
+      where: { id?: string };
+      data: Record<string, unknown>;
+    }) => {
+      const current = where.id ? records.get(where.id) : undefined;
+      if (!current) return { count: 0 };
+      records.set(where.id!, { ...current, ...data });
+      return { count: 1 };
+    });
+    const prisma = {
+      webLoginRequest: {
+        create,
+        findUnique: jest.fn(async ({ where }: { where: { id: string } }) => records.get(where.id) ?? null),
+        updateMany,
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      webSession: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+    } as unknown as PrismaService;
+    return { prisma, records, create, updateMany };
+  }
+
+  it('reuses one signed pending request after reload, new tab, or browser reopen', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-01T00:00:00.000Z'));
+    const store = pendingStore();
+    const service = new AuthService(store.prisma, {} as RedisService);
+
+    const first = await service.start();
+    const resumed = await service.start(first.pendingToken);
+
+    expect(resumed.resumed).toBe(true);
+    expect(resumed.request).toEqual(first.request);
+    expect(resumed.pendingToken).toBe(first.pendingToken);
+    expect(store.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not resume a forged pending cookie', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-01T00:00:00.000Z'));
+    const store = pendingStore();
+    const service = new AuthService(store.prisma, {} as RedisService);
+
+    const first = await service.start();
+    const forged = `${first.pendingToken.slice(0, -1)}x`;
+    const second = await service.start(forged);
+
+    expect(second.resumed).toBe(false);
+    expect(second.request.requestId).not.toBe(first.request.requestId);
+    expect(store.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('resumes an approved request so the browser can complete login automatically', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-01T00:00:00.000Z'));
+    const store = pendingStore();
+    const service = new AuthService(store.prisma, {} as RedisService);
+    const first = await service.start();
+    const record = store.records.get(first.request.requestId)!;
+    store.records.set(first.request.requestId, {
+      ...record,
+      status: WebLoginRequestStatus.APPROVED,
+      approvedBotUid: '00000001',
+    });
+
+    const resumed = await service.start(first.pendingToken);
+
+    expect(resumed.resumed).toBe(true);
+    expect(resumed.request).toEqual(first.request);
+    expect(store.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels the existing request only when the user explicitly asks for a new code', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-01T00:00:00.000Z'));
+    const store = pendingStore();
+    const service = new AuthService(store.prisma, {} as RedisService);
+    const first = await service.start();
+
+    const replacement = await service.restart(first.pendingToken);
+
+    expect(replacement.request.requestId).not.toBe(first.request.requestId);
+    expect(store.records.get(first.request.requestId)).toMatchObject({
+      status: WebLoginRequestStatus.CANCELLED,
+    });
+    expect(store.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses a short-lived host-only secure cookie separate from the 30-day session', () => {
+    const now = new Date('2026-08-01T00:00:00.000Z');
+    jest.spyOn(Date, 'now').mockReturnValue(now.getTime());
+    const service = new AuthService({} as PrismaService, {} as RedisService);
+    const expiresAt = new Date(now.getTime() + 300_000);
+
+    expect(service.pendingCookieOptions(expiresAt)).toEqual({
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+      expires: expiresAt,
+      maxAge: 300_000,
+    });
+    expect(service.pendingCookieOptions(expiresAt)).not.toHaveProperty('domain');
+    expect(service.config.pendingCookieName).not.toBe(service.config.cookieName);
+  });
+});

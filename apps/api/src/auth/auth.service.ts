@@ -30,6 +30,26 @@ const INVALID_CODE = {
   message: '웹 인증코드가 올바르지 않거나 만료되었습니다.',
 };
 
+const PENDING_COOKIE_VERSION = 1;
+const REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const USER_CODE_PATTERN = /^[23456789A-HJ-NP-Z]{4}-[23456789A-HJ-NP-Z]{4}$/;
+const DEVICE_SECRET_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+type PendingCredential = {
+  v: typeof PENDING_COOKIE_VERSION;
+  requestId: string;
+  userCode: string;
+  deviceSecret: string;
+  expiresAt: number;
+};
+
+type PublicDeviceRequest = {
+  requestId: string;
+  userCode: string;
+  deviceSecret: string;
+  expiresAt: string;
+};
+
 @Injectable()
 export class AuthService {
   readonly config: WebAuthConfig;
@@ -57,9 +77,36 @@ export class AuthService {
     }
   }
 
-  async start() {
+  async start(pendingToken: string | null = null) {
     assertWebAuthEnabled(this.config);
     void this.cleanup().catch(() => undefined);
+    if (pendingToken) {
+      const resumed = await this.resumePendingRequest(pendingToken);
+      if (resumed) return resumed;
+    }
+    return this.createPendingRequest();
+  }
+
+  async restart(pendingToken: string | null = null) {
+    assertWebAuthEnabled(this.config);
+    const credential = pendingToken ? this.parsePendingToken(pendingToken) : null;
+    if (credential) {
+      await this.prisma.webLoginRequest.updateMany({
+        where: {
+          id: credential.requestId,
+          deviceSecretHash: hmac(credential.deviceSecret, this.config.tokenHashSecret),
+          status: { in: [WebLoginRequestStatus.PENDING, WebLoginRequestStatus.APPROVED] },
+        },
+        data: {
+          status: WebLoginRequestStatus.CANCELLED,
+          cancelledAt: new Date(),
+        },
+      });
+    }
+    return this.createPendingRequest();
+  }
+
+  private async createPendingRequest() {
     const deviceSecret = generateSecret();
     const deviceSecretHash = hmac(deviceSecret, this.config.tokenHashSecret);
     const expiresAt = new Date(Date.now() + this.config.requestTtlMs);
@@ -75,17 +122,100 @@ export class AuthService {
           },
           select: { id: true },
         });
-        return {
+        const publicRequest: PublicDeviceRequest = {
           requestId: request.id,
           userCode,
           deviceSecret,
           expiresAt: expiresAt.toISOString(),
+        };
+        return {
+          request: publicRequest,
+          pendingToken: this.signPendingToken({
+            v: PENDING_COOKIE_VERSION,
+            requestId: publicRequest.requestId,
+            userCode: publicRequest.userCode,
+            deviceSecret: publicRequest.deviceSecret,
+            expiresAt: expiresAt.getTime(),
+          }),
+          expiresAt,
+          resumed: false,
         };
       } catch {
         if (attempt === 3) throw new ConflictException('인증 요청을 생성하지 못했습니다.');
       }
     }
     throw new ConflictException('인증 요청을 생성하지 못했습니다.');
+  }
+
+  private async resumePendingRequest(pendingToken: string) {
+    const credential = this.parsePendingToken(pendingToken);
+    if (!credential) return null;
+    const request = await this.prisma.webLoginRequest.findUnique({
+      where: { id: credential.requestId },
+    });
+    if (
+      !request
+      || request.expiresAt.getTime() !== credential.expiresAt
+      || request.expiresAt.getTime() <= Date.now()
+      || !safeHashEqual(
+        hmac(credential.deviceSecret, this.config.tokenHashSecret),
+        request.deviceSecretHash,
+      )
+      || !safeHashEqual(
+        hmac(credential.userCode, this.config.tokenHashSecret),
+        request.userCodeHash,
+      )
+      || (
+        request.status !== WebLoginRequestStatus.PENDING
+        && request.status !== WebLoginRequestStatus.APPROVED
+      )
+    ) {
+      return null;
+    }
+    const expiresAt = request.expiresAt;
+    return {
+      request: {
+        requestId: credential.requestId,
+        userCode: credential.userCode,
+        deviceSecret: credential.deviceSecret,
+        expiresAt: expiresAt.toISOString(),
+      },
+      pendingToken,
+      expiresAt,
+      resumed: true,
+    };
+  }
+
+  private signPendingToken(credential: PendingCredential) {
+    const payload = Buffer.from(JSON.stringify(credential), 'utf8').toString('base64url');
+    return `${payload}.${hmac(payload, this.config.tokenHashSecret)}`;
+  }
+
+  private parsePendingToken(token: string): PendingCredential | null {
+    if (token.length > 2048) return null;
+    const parts = token.split('.');
+    if (parts.length !== 2) return null;
+    const [payload, signature] = parts;
+    if (!payload || !signature || !safeHashEqual(
+      hmac(payload, this.config.tokenHashSecret),
+      signature,
+    )) return null;
+    try {
+      const value = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Partial<PendingCredential>;
+      if (
+        value.v !== PENDING_COOKIE_VERSION
+        || typeof value.requestId !== 'string'
+        || !REQUEST_ID_PATTERN.test(value.requestId)
+        || typeof value.userCode !== 'string'
+        || !USER_CODE_PATTERN.test(value.userCode)
+        || typeof value.deviceSecret !== 'string'
+        || !DEVICE_SECRET_PATTERN.test(value.deviceSecret)
+        || !Number.isSafeInteger(value.expiresAt)
+      ) return null;
+      return value as PendingCredential;
+    } catch {
+      return null;
+    }
   }
 
   private async verifiedRequest(requestId: string, deviceSecret: string) {
@@ -302,13 +432,32 @@ export class AuthService {
     };
   }
 
+  pendingCookieOptions(expiresAt: Date): CookieOptions {
+    return {
+      httpOnly: true,
+      secure: this.config.secureCookie,
+      sameSite: 'lax',
+      path: '/',
+      expires: expiresAt,
+      maxAge: Math.max(0, expiresAt.getTime() - Date.now()),
+    };
+  }
+
   readSessionToken(cookieHeader: string | undefined) {
+    return this.readCookie(cookieHeader, this.config.cookieName);
+  }
+
+  readPendingToken(cookieHeader: string | undefined) {
+    return this.readCookie(cookieHeader, this.config.pendingCookieName);
+  }
+
+  private readCookie(cookieHeader: string | undefined, cookieName: string) {
     if (!cookieHeader) return null;
     for (const part of cookieHeader.split(';')) {
       const separator = part.indexOf('=');
       if (separator < 0) continue;
       const name = part.slice(0, separator).trim();
-      if (name !== this.config.cookieName) continue;
+      if (name !== cookieName) continue;
       try {
         return decodeURIComponent(part.slice(separator + 1));
       } catch {

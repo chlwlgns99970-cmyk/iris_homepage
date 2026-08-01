@@ -26,6 +26,7 @@ export type WebAuthConfig = {
   sessionTtlMs: number;
   cleanupRetentionMs: number;
   cookieName: string;
+  pendingCookieName: string;
   secureCookie: boolean;
 };
 
@@ -46,9 +47,10 @@ export function getWebAuthConfig(env: NodeJS.ProcessEnv = process.env): WebAuthC
     'WEB_AUTH_CLEANUP_RETENTION_MS',
   );
   const cookieName = env.WEB_SESSION_COOKIE_NAME?.trim() || 'natebe_session';
-  if (!/^[A-Za-z0-9_-]{1,64}$/.test(cookieName)) {
+  if (!/^[A-Za-z0-9_-]{1,56}$/.test(cookieName)) {
     throw new Error('WEB_SESSION_COOKIE_NAME 형식이 올바르지 않습니다.');
   }
+  const pendingCookieName = `${cookieName}_pending`;
 
   if (!enabled) {
     return {
@@ -60,6 +62,7 @@ export function getWebAuthConfig(env: NodeJS.ProcessEnv = process.env): WebAuthC
       sessionTtlMs,
       cleanupRetentionMs,
       cookieName,
+      pendingCookieName,
       secureCookie: env.NODE_ENV === 'production',
     };
   }
@@ -80,6 +83,7 @@ export function getWebAuthConfig(env: NodeJS.ProcessEnv = process.env): WebAuthC
     sessionTtlMs,
     cleanupRetentionMs,
     cookieName,
+    pendingCookieName,
     secureCookie: env.NODE_ENV === 'production',
   };
 }

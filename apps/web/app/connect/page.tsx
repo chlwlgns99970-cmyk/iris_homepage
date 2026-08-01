@@ -8,6 +8,7 @@ import {
   getCurrentAuth,
   logout,
   pollDeviceAuth,
+  restartDeviceAuth,
   startDeviceAuth,
   type DeviceStartResponse,
 } from '@/lib/api';
@@ -16,30 +17,7 @@ import {
   AUTH_SESSION_PRIMARY_NOTICE,
 } from '@/lib/auth-session-policy';
 
-const STORAGE_KEY = 'natebe_web_auth_device';
-type ViewState = 'starting' | 'pending' | 'approved' | 'completing' | 'success' | 'expired' | 'cancelled' | 'logged_out' | 'error';
-
-function storedRequest(): DeviceStartResponse | null {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<DeviceStartResponse>;
-    if (
-      typeof value.requestId !== 'string'
-      || typeof value.userCode !== 'string'
-      || typeof value.deviceSecret !== 'string'
-      || typeof value.expiresAt !== 'string'
-      || Date.parse(value.expiresAt) <= Date.now()
-    ) {
-      sessionStorage.removeItem(STORAGE_KEY);
-      return null;
-    }
-    return value as DeviceStartResponse;
-  } catch {
-    sessionStorage.removeItem(STORAGE_KEY);
-    return null;
-  }
-}
+type ViewState = 'starting' | 'pending' | 'completing' | 'success' | 'expired' | 'cancelled' | 'logged_out' | 'error';
 
 export default function ConnectPage() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -50,7 +28,6 @@ export default function ConnectPage() {
   const startedRef = useRef(false);
 
   const clearRequest = useCallback(() => {
-    sessionStorage.removeItem(STORAGE_KEY);
     setDeviceRequest(null);
   }, []);
 
@@ -71,16 +48,9 @@ export default function ConnectPage() {
       } catch {
         // 세션 확인이 불가능해도 새 인증 요청 생성을 시도합니다.
       }
-      const previous = storedRequest();
-      if (previous) {
-        setDeviceRequest(previous);
-        setView('pending');
-        return;
-      }
       try {
         const created = await startDeviceAuth();
         if (!active) return;
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(created));
         setDeviceRequest(created);
         setView('pending');
       } catch (error) {
@@ -111,8 +81,15 @@ export default function ConnectPage() {
         const result = await pollDeviceAuth(deviceRequest!.requestId, deviceRequest!.deviceSecret);
         if (!active) return;
         if (result.status === 'approved') {
-          setApprovedUid(result.botUid);
-          setView('approved');
+          setView('completing');
+          const completed = await completeDeviceAuth(
+            deviceRequest!.requestId,
+            deviceRequest!.deviceSecret,
+          );
+          if (!active) return;
+          clearRequest();
+          setApprovedUid(completed.botUid);
+          setView('success');
           return;
         }
         if (result.status === 'expired' || result.status === 'consumed') {
@@ -140,16 +117,16 @@ export default function ConnectPage() {
     };
   }, [clearRequest, deviceRequest, view]);
 
-  async function complete() {
-    if (!deviceRequest) return;
-    setView('completing');
+  async function renew() {
+    if (!window.confirm('새 인증코드를 발급하면 기존 요청은 취소됩니다. 계속할까요?')) return;
+    setView('starting');
+    setMessage('');
     try {
-      const result = await completeDeviceAuth(deviceRequest.requestId, deviceRequest.deviceSecret);
-      clearRequest();
-      setApprovedUid(result.botUid);
-      setView('success');
+      const created = await restartDeviceAuth();
+      setDeviceRequest(created);
+      setView('pending');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '로그인을 완료하지 못했습니다.');
+      setMessage(error instanceof Error ? error.message : '새 인증 요청을 만들지 못했습니다.');
       setView('error');
     }
   }
@@ -214,19 +191,12 @@ export default function ConnectPage() {
             <>
               <p>카카오톡에서 아래 명령어를 입력해 주세요.</p>
               <div className="connect-code">/웹인증 {deviceRequest.userCode}</div>
-              <button className="button secondary" type="button" onClick={copyCommand}>명령어 복사</button>
-              <p className="connect-muted">같은 탭의 새로고침은 이어집니다. 인증을 마칠 때까지 이 탭을 닫지 마세요.</p>
-              <button className="connect-cancel" type="button" onClick={cancel}>취소</button>
-            </>
-          )}
-          {view === 'approved' && (
-            <>
-              <p>UID <b>{approvedUid}</b> 계정으로 연결 요청이 승인되었습니다.</p>
-              <h2>이 계정으로 로그인할까요?</h2>
               <div className="connect-actions">
-                <button className="button primary" type="button" onClick={complete}>연결 완료</button>
-                <button className="button secondary" type="button" onClick={cancel}>취소</button>
+                <button className="button secondary" type="button" onClick={copyCommand}>인증번호 복사</button>
+                <button className="button secondary" type="button" onClick={renew}>새 인증코드 발급</button>
               </div>
+              <p className="connect-muted">카카오톡으로 돌아가거나 이 창을 닫아도 만료 전에는 같은 인증번호가 유지됩니다.</p>
+              <button className="connect-cancel" type="button" onClick={cancel}>취소</button>
             </>
           )}
           {view === 'completing' && <p>보안 세션을 생성하고 있습니다.</p>}

@@ -37,9 +37,37 @@ export class AuthController {
   }
 
   @Post('device/start')
-  async start(@Req() request: Request) {
+  async start(
+    @Req() request: Request,
+    @Headers('cookie') cookie: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ) {
     await this.auth.enforceRateLimit('start', requestSubject(request), 10, 60);
-    return this.auth.start();
+    const result = await this.auth.start(this.auth.readPendingToken(cookie));
+    setPrivateSessionHeaders(response);
+    response.cookie(
+      this.auth.config.pendingCookieName,
+      result.pendingToken,
+      this.auth.pendingCookieOptions(result.expiresAt),
+    );
+    return result.request;
+  }
+
+  @Post('device/restart')
+  async restart(
+    @Req() request: Request,
+    @Headers('cookie') cookie: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    await this.auth.enforceRateLimit('restart', requestSubject(request), 5, 60);
+    const result = await this.auth.restart(this.auth.readPendingToken(cookie));
+    setPrivateSessionHeaders(response);
+    response.cookie(
+      this.auth.config.pendingCookieName,
+      result.pendingToken,
+      this.auth.pendingCookieOptions(result.expiresAt),
+    );
+    return result.request;
   }
 
   @Post('device/poll')
@@ -69,13 +97,26 @@ export class AuthController {
       result.sessionToken,
       this.auth.sessionCookieOptions(result.expiresAt),
     );
+    response.clearCookie(
+      this.auth.config.pendingCookieName,
+      this.auth.pendingCookieOptions(new Date(0)),
+    );
     return { authenticated: true, botUid: result.botUid };
   }
 
   @Post('device/cancel')
   @HttpCode(200)
-  cancel(@Body() body: DeviceCredentialDto) {
-    return this.auth.cancel(body.requestId, body.deviceSecret);
+  async cancel(
+    @Body() body: DeviceCredentialDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.auth.cancel(body.requestId, body.deviceSecret);
+    setPrivateSessionHeaders(response);
+    response.clearCookie(
+      this.auth.config.pendingCookieName,
+      this.auth.pendingCookieOptions(new Date(0)),
+    );
+    return result;
   }
 
   @Get('me')
@@ -98,6 +139,10 @@ export class AuthController {
     response.clearCookie(
       this.auth.config.cookieName,
       this.auth.sessionCookieOptions(new Date(0)),
+    );
+    response.clearCookie(
+      this.auth.config.pendingCookieName,
+      this.auth.pendingCookieOptions(new Date(0)),
     );
     return result;
   }
