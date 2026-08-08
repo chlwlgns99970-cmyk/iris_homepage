@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -12,7 +13,11 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from '../auth/auth.service';
-import { CreatePaymentOrderDto } from './payment.dto';
+import {
+  ConfirmPaymentDto,
+  CreatePaymentOrderDto,
+  LegacyConfirmPaymentDto,
+} from './payment.dto';
 import { PaymentsService } from './payments.service';
 
 function requestSubject(request: Request) {
@@ -23,6 +28,33 @@ function privateHeaders(response: Response) {
   response.setHeader('Cache-Control', 'private, no-store, max-age=0');
   response.setHeader('Pragma', 'no-cache');
   response.setHeader('Vary', 'Cookie');
+}
+
+function tossWebhookInput(body: unknown, transmissionId: string | undefined) {
+  const event = body as {
+    eventType?: unknown;
+    data?: { orderId?: unknown; paymentKey?: unknown; status?: unknown };
+  } | null;
+  if (
+    event === null
+    || typeof event !== 'object'
+    || typeof event.eventType !== 'string'
+    || event.data === null
+    || typeof event.data !== 'object'
+    || typeof event.data.orderId !== 'string'
+    || typeof event.data.paymentKey !== 'string'
+    || typeof event.data.status !== 'string'
+    || typeof transmissionId !== 'string'
+  ) {
+    throw new BadRequestException({ code: 'TOSS_WEBHOOK_INVALID', message: '웹훅 요청 형식이 올바르지 않습니다.' });
+  }
+  return {
+    eventType: event.eventType,
+    orderId: event.data.orderId,
+    paymentKey: event.data.paymentKey,
+    providerStatus: event.data.status,
+    transmissionId,
+  };
 }
 
 @Controller('api/payments')
@@ -70,8 +102,9 @@ export class PaymentsController {
 
   @Post('orders/:orderId/confirm')
   @HttpCode(200)
-  async confirm(
+  async confirmLegacy(
     @Param('orderId') orderId: string,
+    @Body() body: LegacyConfirmPaymentDto,
     @Headers('cookie') cookie: string | undefined,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
@@ -80,7 +113,43 @@ export class PaymentsController {
     const botUid = await this.requireBotUid(cookie);
     await this.auth.enforceRateLimit('payment-confirm-ip', requestSubject(request), 30, 60);
     await this.auth.enforceRateLimit('payment-confirm-account', botUid, 15, 60);
-    return this.payments.confirm(botUid, orderId);
+    return this.payments.confirm(botUid, {
+      orderId,
+      paymentKey: body.paymentKey,
+      amountKrw: body.amount,
+    });
+  }
+
+  @Post('confirm')
+  @HttpCode(200)
+  async confirm(
+    @Body() body: ConfirmPaymentDto,
+    @Headers('cookie') cookie: string | undefined,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    privateHeaders(response);
+    const botUid = await this.requireBotUid(cookie);
+    await this.auth.enforceRateLimit('payment-confirm-ip', requestSubject(request), 30, 60);
+    await this.auth.enforceRateLimit('payment-confirm-account', botUid, 15, 60);
+    return this.payments.confirm(botUid, {
+      orderId: body.orderId,
+      paymentKey: body.paymentKey,
+      amountKrw: body.amount,
+    });
+  }
+
+  @Post('webhooks/toss')
+  @HttpCode(200)
+  async tossWebhook(
+    @Body() body: unknown,
+    @Headers('tosspayments-webhook-transmission-id') transmissionId: string | undefined,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    await this.auth.enforceRateLimit('payment-webhook-toss-ip', requestSubject(request), 120, 60);
+    return this.payments.reconcileTossWebhook(tossWebhookInput(body, transmissionId));
   }
 
   @Post('orders/:orderId/cancel')

@@ -17,7 +17,7 @@ CREATE TABLE "payment_orders" (
   "goldAmount" INTEGER NOT NULL,
   "status" "PaymentOrderStatus" NOT NULL DEFAULT 'PENDING',
   "provider" VARCHAR(30) NOT NULL,
-  "providerPaymentKey" VARCHAR(191),
+  "providerPaymentKey" VARCHAR(200),
   "idempotencyKeyHash" VARCHAR(64),
   "goldBalanceAfter" BIGINT,
   "failureCode" VARCHAR(64),

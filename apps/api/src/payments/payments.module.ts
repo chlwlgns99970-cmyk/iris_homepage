@@ -9,6 +9,7 @@ import {
 } from './payment.provider';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { TossPaymentsProvider } from './toss-payments.provider';
 
 @Module({
   imports: [AuthModule],
@@ -19,7 +20,9 @@ import { PaymentsService } from './payments.service';
       provide: PAYMENT_PROVIDER,
       useFactory: () => {
         const config = getPaymentConfig();
-        return config.provider === 'mock' ? new MockPaymentProvider() : new DisabledPaymentProvider();
+        if (config.provider === 'mock') return new MockPaymentProvider();
+        if (config.provider === 'toss') return new TossPaymentsProvider(config);
+        return new DisabledPaymentProvider();
       },
     },
     {

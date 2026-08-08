@@ -1,10 +1,15 @@
 export type PaymentConfig = {
-  provider: 'disabled' | 'mock';
+  provider: 'disabled' | 'mock' | 'toss';
   fulfillmentEnabled: boolean;
   fulfillmentUrl: string;
   fulfillmentToken: string;
   fulfillmentTimeoutMs: number;
+  tossClientKey: string;
+  tossSecretKey: string;
+  tossApiBaseUrl: string;
 };
+
+const TOSS_API_BASE_URL = 'https://api.tosspayments.com';
 
 function positiveInteger(value: string | undefined, fallback: number, name: string) {
   const parsed = Number(value ?? fallback);
@@ -23,11 +28,25 @@ function safeBaseUrl(value: string, name: string) {
 
 export function getPaymentConfig(env: NodeJS.ProcessEnv = process.env): PaymentConfig {
   const provider = String(env.PAYMENT_PROVIDER ?? 'disabled').trim().toLowerCase();
-  if (provider !== 'disabled' && provider !== 'mock') {
+  if (provider !== 'disabled' && provider !== 'mock' && provider !== 'toss') {
     throw new Error('PAYMENT_PROVIDER is not supported');
   }
   if (provider === 'mock' && env.NODE_ENV !== 'test') {
     throw new Error('mock payment provider is test-only');
+  }
+
+  const tossClientKey = String(env.TOSS_CLIENT_KEY ?? '').trim();
+  const tossSecretKey = String(env.TOSS_SECRET_KEY ?? '').trim();
+  if (provider === 'toss') {
+    if (env.NODE_ENV === 'production') {
+      throw new Error('toss payment provider is sandbox-only in this release');
+    }
+    if (!tossClientKey.startsWith('test_gck_') || !tossSecretKey.startsWith('test_gsk_')) {
+      throw new Error('toss payment provider requires matching Payment Widget test keys');
+    }
+    if (tossClientKey.length < 20 || tossSecretKey.length < 20) {
+      throw new Error('toss payment test keys are invalid');
+    }
   }
 
   const fulfillmentEnabled = String(env.PAYMENT_FULFILLMENT_ENABLED ?? 'false').toLowerCase() === 'true';
@@ -57,5 +76,8 @@ export function getPaymentConfig(env: NodeJS.ProcessEnv = process.env): PaymentC
       5_000,
       'RPG_PAYMENT_INTERNAL_API_TIMEOUT_MS',
     ),
+    tossClientKey,
+    tossSecretKey,
+    tossApiBaseUrl: TOSS_API_BASE_URL,
   };
 }

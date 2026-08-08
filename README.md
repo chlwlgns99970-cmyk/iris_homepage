@@ -245,9 +245,9 @@ packages/shared    공유 API 형식
 backups             수정 전 상태 기록
 ```
 
-## 골드 결제 1차 기반
+## 골드 결제와 토스 Sandbox
 
-운영 결제는 비활성입니다. 실제 PG사와 공개 client key, 서버 secret, 승인·취소 API 계약이 확정된 뒤 `PaymentProvider` adapter만 추가합니다. PG secret, RPG 지급 토큰, DB 비밀번호는 `NEXT_PUBLIC_*`에 넣지 않습니다.
+운영 결제는 계속 비활성입니다. `TossPaymentsProvider`는 토스페이먼츠 Payment Widget의 테스트 키로 로컬 Sandbox 흐름만 검증하며, `NODE_ENV=production`에서는 `PAYMENT_PROVIDER=toss` 설정을 거부합니다. PG secret, RPG 지급 토큰, DB 비밀번호는 `NEXT_PUBLIC_*`에 넣지 않습니다.
 
 ```env
 PAYMENT_PROVIDER=disabled
@@ -255,9 +255,16 @@ PAYMENT_FULFILLMENT_ENABLED=false
 RPG_PAYMENT_INTERNAL_API_URL=http://127.0.0.1:5000
 RPG_PAYMENT_INTERNAL_API_TOKEN=
 RPG_PAYMENT_INTERNAL_API_TIMEOUT_MS=5000
+TOSS_CLIENT_KEY=
+TOSS_SECRET_KEY=
 ```
 
-주문 상태는 `pending → paid → fulfilling → completed` 순서입니다. `orderId`, `providerPaymentKey`, `idempotencyKeyHash`가 각각 unique이며, 동일 주문 지급은 봇의 `payment.gold_fulfillment` operation ID로 다시 차단합니다. 지급 오류는 `fulfilling` 상태와 실패 코드로 남기고 `completed`로 바꾸지 않습니다. 환불은 자동화하지 않았으며 지급 여부와 골드 사용 여부, PG 취소 가능 여부를 운영자가 확인한 뒤 별도 승인 절차로 처리해야 합니다.
+로컬 Sandbox에서만 토스 Dashboard의 Payment Widget 테스트 client key(`test_gck_`)와 secret key(`test_gsk_`)를 입력하고 `PAYMENT_PROVIDER=toss`로 바꿀 수 있습니다. 공개 client key는 인증된 주문 생성 응답으로 브라우저에 전달되며 secret key는 NestJS에서만 사용합니다. 현재 단계에서는 `PAYMENT_FULFILLMENT_ENABLED=false`를 유지하므로 테스트 승인 주문은 `paid`에서 멈추고 실제 골드를 지급하지 않습니다. live key, 실제 사용자 결제, 운영 환경변수 입력, 운영 DB 마이그레이션 및 배포는 이 단계의 범위가 아닙니다.
+
+결제 성공 URL의 `paymentKey`, `orderId`, `amount`는 신뢰하지 않고 `POST /api/payments/confirm`으로 전달만 합니다. API는 로그인·소유권·DB 상품 금액·결제키 중복을 검증하고 토스 Confirm API의 `orderId`, `paymentKey`, `totalAmount`, `status`가 모두 일치할 때만 `paid`로 기록합니다. 주문 상태는 지급 활성화 후 `pending → paid → fulfilling → completed` 순서이며, 지급 오류는 `fulfilling`과 실패 코드에 남겨 동일 `orderId`로 안전하게 재처리합니다.
+
+`POST /api/payments/webhooks/toss`는 `PAYMENT_STATUS_CHANGED` 형식만 받습니다. 일반 결제 상태 웹훅에는 별도 공유 secret을 임의로 만들지 않으며, 저장된 Toss 주문만 서버 secret으로 토스 결제 조회 API에 재조회해 주문번호·결제키·금액·상태를 동기화합니다. `orderId`, `providerPaymentKey`, `idempotencyKeyHash`는 각각 unique이고 동일 주문 골드 지급은 봇의 `payment.gold_fulfillment` operation ID로 다시 차단합니다. 취소 API adapter는 구현했지만 승인 결제 환불 관리자 UI와 자동 환불은 활성화하지 않았습니다.
+
 # 로그인 사용자 RPG 대시보드
 
 `GET /api/portal/dashboard`는 기존 HttpOnly 세션을 검증한 뒤 세션에 연결된 UID만

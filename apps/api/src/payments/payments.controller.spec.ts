@@ -21,6 +21,7 @@ describe('PaymentsController security boundary', () => {
     createOrder: jest.fn(async () => ({ order: { orderId: 'safe' } })),
     confirm: jest.fn(async () => ({ status: 'completed' })),
     cancel: jest.fn(async () => ({ status: 'cancelled' })),
+    reconcileTossWebhook: jest.fn(async () => ({ received: true })),
   };
 
   async function application() {
@@ -85,6 +86,70 @@ describe('PaymentsController security boundary', () => {
     const body = payments.createOrder.mock.calls[0];
     expect(JSON.stringify(body)).not.toContain('price');
     expect(JSON.stringify(body)).not.toContain('gold');
+    await app.close();
+  });
+
+  it('confirms only the authenticated account with the exact callback fields', async () => {
+    const app = await application();
+    const callback = {
+      orderId: 'GOLD_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      paymentKey: 'test-payment-key',
+      amount: 10_000,
+    };
+    await request(app.getHttpServer())
+      .post('/api/payments/confirm')
+      .set('Cookie', 'session=value')
+      .send(callback)
+      .expect(200);
+    expect(payments.confirm).toHaveBeenCalledWith('90000001', {
+      orderId: callback.orderId,
+      paymentKey: callback.paymentKey,
+      amountKrw: callback.amount,
+    });
+    expect(auth.enforceRateLimit).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+
+  it('rejects malformed confirm callbacks before the payment service', async () => {
+    const app = await application();
+    await request(app.getHttpServer())
+      .post('/api/payments/confirm')
+      .set('Cookie', 'session=value')
+      .send({ orderId: 'wrong', paymentKey: '', amount: 0, gold: 999 })
+      .expect(400);
+    expect(payments.confirm).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('accepts only the official Toss payment webhook envelope and transmission id', async () => {
+    const app = await application();
+    const body = {
+      eventType: 'PAYMENT_STATUS_CHANGED',
+      data: {
+        orderId: 'GOLD_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        paymentKey: 'test-payment-key',
+        status: 'DONE',
+      },
+    };
+    await request(app.getHttpServer())
+      .post('/api/payments/webhooks/toss')
+      .set('tosspayments-webhook-transmission-id', 'transmission-safe-1')
+      .send(body)
+      .expect(200);
+    expect(payments.reconcileTossWebhook).toHaveBeenCalledWith({
+      eventType: body.eventType,
+      orderId: body.data.orderId,
+      paymentKey: body.data.paymentKey,
+      providerStatus: body.data.status,
+      transmissionId: 'transmission-safe-1',
+    });
+
+    jest.clearAllMocks();
+    await request(app.getHttpServer())
+      .post('/api/payments/webhooks/toss')
+      .send(body)
+      .expect(400);
+    expect(payments.reconcileTossWebhook).not.toHaveBeenCalled();
     await app.close();
   });
 });

@@ -15,6 +15,7 @@ import {
 } from '@/lib/api';
 import { resolvePortalCurrentJob, resolvePortalNickname } from '@/lib/character-image';
 import { businessInformation, paymentLegalContent } from '@/lib/payment-content';
+import { openTossPaymentWindow } from '@/lib/toss-payments';
 
 const jobLabels = { warrior: '전사', archer: '궁수', mage: '마법사', unknown: '직업 정보 없음' } as const;
 
@@ -106,6 +107,26 @@ export default function GoldShopPage() {
     try {
       const idempotencyKey = crypto.randomUUID().replaceAll('-', '_');
       const result = await createPaymentOrder(selected.id, idempotencyKey);
+      if (
+        result.order.productId !== selected.id
+        || result.order.priceKrw !== selected.priceKrw
+        || result.order.goldAmount !== selected.goldAmount
+      ) {
+        throw new Error('서버 주문 정보가 선택한 상품과 일치하지 않습니다.');
+      }
+      if (result.checkout?.kind === 'toss-widget') {
+        const origin = window.location.origin;
+        await openTossPaymentWindow({
+          clientKey: result.checkout.clientKey,
+          customerKey: result.checkout.customerKey,
+          orderId: result.order.orderId,
+          orderName: result.order.productName,
+          amount: result.order.priceKrw,
+          successUrl: `${origin}/payment/success`,
+          failUrl: `${origin}/payment/fail`,
+        });
+        return;
+      }
       if (!result.checkoutUrl) throw new Error('결제창 연결 정보가 없습니다.');
       const checkout = new URL(result.checkoutUrl);
       if (checkout.protocol !== 'https:') throw new Error('안전한 결제 주소를 확인할 수 없습니다.');
@@ -136,6 +157,12 @@ export default function GoldShopPage() {
           {!storefront?.enabled && (
             <div className="shop-disabled-notice" role="status">
               실제 PG 연동 전 안전 점검 단계입니다. 현재 결제와 골드 지급은 활성화되지 않았습니다.
+            </div>
+          )}
+          {storefront?.enabled && storefront.sandbox && (
+            <div className="shop-disabled-notice" role="status">
+              토스 Sandbox 테스트 결제입니다. 실제 청구는 발생하지 않으며
+              {!storefront.fulfillmentEnabled && ' 골드 지급도 비활성화되어 있습니다.'}
             </div>
           )}
         </section>
@@ -170,7 +197,7 @@ export default function GoldShopPage() {
                     disabled={auth !== 'authenticated'}
                     onClick={(event) => openModal(product, event.currentTarget)}
                   >
-                    {storefront?.enabled ? '구매하기' : '상품 확인'}
+                    {storefront?.sandbox ? '테스트 결제' : storefront?.enabled ? '구매하기' : '상품 확인'}
                   </button>
                 )}
               </article>
@@ -203,7 +230,9 @@ export default function GoldShopPage() {
             <div className="payment-modal-actions">
               <button type="button" onClick={closeModal}>취소</button>
               <button className="primary" type="button" disabled={!storefront?.enabled || !accepted || busy} onClick={purchase}>
-                {storefront?.enabled ? `${formatNumber(selected.priceKrw)}원 결제하기` : '실결제 준비중'}
+                {storefront?.sandbox
+                  ? `${formatNumber(selected.priceKrw)}원 테스트 결제`
+                  : storefront?.enabled ? `${formatNumber(selected.priceKrw)}원 결제하기` : '실결제 준비중'}
               </button>
             </div>
           </section>

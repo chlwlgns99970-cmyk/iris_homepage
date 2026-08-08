@@ -147,7 +147,7 @@ model PaymentOrder {
   goldAmount             Int
   status                 PaymentOrderStatus @default(PENDING)
   provider               String             @db.VarChar(30)
-  providerPaymentKey     String?            @unique @db.VarChar(191)
+  providerPaymentKey     String?            @unique @db.VarChar(200)
   idempotencyKeyHash     String?            @unique @db.VarChar(64)
   goldBalanceAfter       BigInt?
   failureCode            String?            @db.VarChar(64)

@@ -167,8 +167,16 @@ export type GoldProduct = {
 export type PaymentStorefront = {
   enabled: boolean;
   provider: string;
+  sandbox: boolean;
+  fulfillmentEnabled: boolean;
   rate: { krw: number; gold: number };
   products: GoldProduct[];
+};
+
+export type TossWidgetCheckout = {
+  kind: 'toss-widget';
+  clientKey: string;
+  customerKey: string;
 };
 
 export type PaymentOrder = {
@@ -307,14 +315,22 @@ export const getPaymentOrder = (orderId: string) =>
   api<PaymentOrder>(`/api/payments/orders/${encodeURIComponent(orderId)}`);
 
 export const createPaymentOrder = (productId: GoldProduct['id'], idempotencyKey: string) =>
-  api<{ order: PaymentOrder; checkoutUrl?: string; replayed: boolean }>('/api/payments/orders', {
+  api<{
+    order: PaymentOrder;
+    checkoutUrl?: string;
+    checkout?: TossWidgetCheckout;
+    replayed: boolean;
+  }>('/api/payments/orders', {
     method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify({ productId }),
   });
 
-export const confirmPaymentOrder = (orderId: string) =>
-  api<PaymentOrder>(`/api/payments/orders/${encodeURIComponent(orderId)}/confirm`, { method: 'POST' });
+export const confirmPaymentOrder = (orderId: string, paymentKey: string, amount: number) =>
+  api<PaymentOrder>('/api/payments/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ orderId, paymentKey, amount }),
+  });
 
 export const cancelPaymentOrder = (orderId: string) =>
   api<PaymentOrder>(`/api/payments/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'POST' });

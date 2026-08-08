@@ -1,7 +1,8 @@
 import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
 import { PaymentOrderStatus, type PaymentOrder } from '@prisma/client';
 import type { GoldFulfillmentClient, GoldFulfillmentRequest } from './gold-fulfillment.client';
-import { MockPaymentProvider } from './payment.provider';
+import { GOLD_PRODUCTS } from './payment-products';
+import { MockPaymentProvider, type PaymentProvider } from './payment.provider';
 import { PaymentsService } from './payments.service';
 
 const BOT_UID_A = '90000001';
@@ -16,7 +17,10 @@ class FakePrisma {
   webAccount: { findUnique: (args: { where: { botUid: string } }) => Promise<{ id: string } | null> };
 
   paymentOrder: {
-    findUnique: (args: { where: { idempotencyKeyHash: string } }) => Promise<PaymentOrder | null>;
+    findUnique: (args: {
+      where: { idempotencyKeyHash?: string; providerPaymentKey?: string; orderId?: string };
+      include?: unknown;
+    }) => Promise<(PaymentOrder & { webAccount?: { botUid: string } }) | null>;
     create: (args: { data: Partial<PaymentOrder> }) => Promise<PaymentOrder>;
     findFirst: (args: { where: { orderId: string; webAccountId: string } }) => Promise<PaymentOrder | null>;
     findMany: (args: { where: { webAccountId: string } }) => Promise<PaymentOrder[]>;
@@ -34,9 +38,16 @@ class FakePrisma {
       findUnique: async ({ where }) => this.accounts.get(where.botUid) ?? null,
     };
     this.paymentOrder = {
-      findUnique: async ({ where }) => (
-        this.orders.find((order) => order.idempotencyKeyHash === where.idempotencyKeyHash) ?? null
-      ),
+      findUnique: async ({ where, include }) => {
+        const order = this.orders.find((entry) => (
+          (where.idempotencyKeyHash !== undefined && entry.idempotencyKeyHash === where.idempotencyKeyHash)
+          || (where.providerPaymentKey !== undefined && entry.providerPaymentKey === where.providerPaymentKey)
+          || (where.orderId !== undefined && entry.orderId === where.orderId)
+        )) ?? null;
+        if (!order || !include) return order;
+        const botUid = [...this.accounts.entries()].find(([, account]) => account.id === order.webAccountId)?.[0];
+        return botUid ? { ...order, webAccount: { botUid } } : order;
+      },
       create: async ({ data }) => {
       const now = new Date('2026-08-09T00:00:00.000Z');
       const order = {
@@ -107,6 +118,10 @@ function fixture() {
   return { prisma, provider, fulfillment, service };
 }
 
+function confirm(service: PaymentsService, orderId: string, paymentKey: string, amountKrw: number) {
+  return service.confirm(BOT_UID_A, { orderId, paymentKey, amountKrw });
+}
+
 describe('PaymentsService', () => {
   it('creates from productId only and replays an idempotency key without a second order', async () => {
     const f = fixture();
@@ -122,8 +137,8 @@ describe('PaymentsService', () => {
     const f = fixture();
     const created = await f.service.createOrder(BOT_UID_A, 'GOLD_10000', 'safe_idempotency_key_0002');
     f.provider.approve(created.order.orderId, 10_000, 'provider-payment-1');
-    const first = await f.service.confirm(BOT_UID_A, created.order.orderId);
-    const second = await f.service.confirm(BOT_UID_A, created.order.orderId);
+    const first = await confirm(f.service, created.order.orderId, 'provider-payment-1', 10_000);
+    const second = await confirm(f.service, created.order.orderId, 'provider-payment-1', 10_000);
     expect(first).toEqual(expect.objectContaining({ status: 'completed', goldAmount: 20_000_000 }));
     expect(second).toEqual(first);
     expect(f.fulfillment.calls).toHaveLength(1);
@@ -139,9 +154,82 @@ describe('PaymentsService', () => {
     const f = fixture();
     const created = await f.service.createOrder(BOT_UID_A, 'GOLD_3000', 'safe_idempotency_key_0003');
     f.provider.approve(created.order.orderId, 1, 'provider-payment-2');
-    await expect(f.service.confirm(BOT_UID_A, created.order.orderId)).rejects.toThrow(ConflictException);
+    await expect(confirm(f.service, created.order.orderId, 'provider-payment-2', 3_000)).rejects.toThrow(ConflictException);
     expect(f.fulfillment.calls).toHaveLength(0);
     expect(f.prisma.orders[0].status).toBe(PaymentOrderStatus.FAILED);
+  });
+
+  it('rejects a manipulated callback amount before provider approval and leaves the order pending', async () => {
+    const f = fixture();
+    const created = await f.service.createOrder(BOT_UID_A, 'GOLD_10000', 'safe_idempotency_key_0008');
+    f.provider.approve(created.order.orderId, 10_000, 'provider-payment-8');
+    await expect(confirm(f.service, created.order.orderId, 'provider-payment-8', 1)).rejects.toThrow(ConflictException);
+    expect(f.fulfillment.calls).toHaveLength(0);
+    expect(f.prisma.orders[0].status).toBe(PaymentOrderStatus.PENDING);
+  });
+
+  it('records a sandbox approval as paid while fulfillment is deliberately disabled', async () => {
+    const f = fixture();
+    const disabledFulfillment: GoldFulfillmentClient = {
+      enabled: false,
+      fulfill: jest.fn(),
+    };
+    const service = new PaymentsService(f.prisma as never, f.provider, disabledFulfillment);
+    const created = await service.createOrder(BOT_UID_A, 'GOLD_1000', 'safe_idempotency_key_0009');
+    f.provider.approve(created.order.orderId, 1_000, 'provider-payment-9');
+    await expect(confirm(service, created.order.orderId, 'provider-payment-9', 1_000))
+      .resolves.toEqual(expect.objectContaining({ status: 'paid' }));
+    expect(disabledFulfillment.fulfill).not.toHaveBeenCalled();
+  });
+
+  it.each(GOLD_PRODUCTS)(
+    'approves the server catalog amount for $id without granting gold in Sandbox',
+    async (product) => {
+      const f = fixture();
+      const disabledFulfillment: GoldFulfillmentClient = { enabled: false, fulfill: jest.fn() };
+      const service = new PaymentsService(f.prisma as never, f.provider, disabledFulfillment);
+      const created = await service.createOrder(
+        BOT_UID_A,
+        product.id,
+        `safe_catalog_approval_${product.priceKrw}`,
+      );
+      f.provider.approve(created.order.orderId, product.priceKrw, `provider-${product.priceKrw}`);
+      await expect(confirm(service, created.order.orderId, `provider-${product.priceKrw}`, product.priceKrw))
+        .resolves.toEqual(expect.objectContaining({
+          status: 'paid',
+          priceKrw: product.priceKrw,
+          goldAmount: product.goldAmount,
+        }));
+      expect(disabledFulfillment.fulfill).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects a changed orderId and an order owned by another account', async () => {
+    const f = fixture();
+    const created = await f.service.createOrder(BOT_UID_A, 'GOLD_1000', 'safe_idempotency_key_0011');
+    f.provider.approve(created.order.orderId, 1_000, 'provider-payment-11');
+    await expect(f.service.confirm(BOT_UID_A, {
+      orderId: 'GOLD_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+      paymentKey: 'provider-payment-11',
+      amountKrw: 1_000,
+    })).rejects.toThrow();
+    await expect(f.service.confirm(BOT_UID_B, {
+      orderId: created.order.orderId,
+      paymentKey: 'provider-payment-11',
+      amountKrw: 1_000,
+    })).rejects.toThrow();
+    expect(f.prisma.orders[0].status).toBe(PaymentOrderStatus.PENDING);
+    expect(f.fulfillment.calls).toHaveLength(0);
+  });
+
+  it('does not approve or grant gold when the provider reports failure', async () => {
+    const f = fixture();
+    const created = await f.service.createOrder(BOT_UID_A, 'GOLD_3000', 'safe_idempotency_key_0012');
+    f.provider.fail(created.order.orderId, 3_000);
+    await expect(confirm(f.service, created.order.orderId, 'provider-payment-12', 3_000))
+      .rejects.toThrow(ConflictException);
+    expect(f.prisma.orders[0].status).toBe(PaymentOrderStatus.FAILED);
+    expect(f.fulfillment.calls).toHaveLength(0);
   });
 
   it('does not mark a fulfillment failure completed and permits no cross-account history', async () => {
@@ -149,10 +237,14 @@ describe('PaymentsService', () => {
     const created = await f.service.createOrder(BOT_UID_A, 'GOLD_5000', 'safe_idempotency_key_0004');
     f.provider.approve(created.order.orderId, 5_000, 'provider-payment-3');
     f.fulfillment.fail = true;
-    await expect(f.service.confirm(BOT_UID_A, created.order.orderId)).rejects.toThrow('injected');
+    await expect(confirm(f.service, created.order.orderId, 'provider-payment-3', 5_000)).rejects.toThrow('injected');
     expect(f.prisma.orders[0].status).toBe(PaymentOrderStatus.FULFILLING);
     expect((await f.service.history(BOT_UID_B)).items).toHaveLength(0);
     await expect(f.service.getOrder(BOT_UID_B, created.order.orderId)).rejects.toThrow();
+    f.fulfillment.fail = false;
+    await expect(confirm(f.service, created.order.orderId, 'provider-payment-3', 5_000))
+      .resolves.toEqual(expect.objectContaining({ status: 'completed' }));
+    expect(f.fulfillment.calls).toHaveLength(2);
   });
 
   it('blocks a duplicate provider payment key across different orders', async () => {
@@ -161,15 +253,53 @@ describe('PaymentsService', () => {
     const b = await f.service.createOrder(BOT_UID_A, 'GOLD_3000', 'safe_idempotency_key_0006');
     f.provider.approve(a.order.orderId, 1_000, 'same-provider-key');
     f.provider.approve(b.order.orderId, 3_000, 'same-provider-key');
-    await f.service.confirm(BOT_UID_A, a.order.orderId);
-    await expect(f.service.confirm(BOT_UID_A, b.order.orderId)).rejects.toThrow(ConflictException);
+    await confirm(f.service, a.order.orderId, 'same-provider-key', 1_000);
+    await expect(confirm(f.service, b.order.orderId, 'same-provider-key', 3_000)).rejects.toThrow(ConflictException);
     expect(f.fulfillment.calls).toHaveLength(1);
   });
 
-  it('refuses order creation while real payments or fulfillment are disabled', async () => {
+  it('refuses order creation while the payment provider is disabled', async () => {
     const f = fixture();
     const disabled = new PaymentsService(f.prisma as never, { ...f.provider, enabled: false } as never, f.fulfillment);
     await expect(disabled.createOrder(BOT_UID_A, 'GOLD_1000', 'safe_idempotency_key_0007'))
       .rejects.toThrow(ServiceUnavailableException);
+  });
+
+  it('reconciles duplicate Toss webhooks through provider lookup without duplicate fulfillment', async () => {
+    const f = fixture();
+    const tossProvider: PaymentProvider = {
+      name: 'toss',
+      enabled: true,
+      sandbox: true,
+      createPayment: f.provider.createPayment.bind(f.provider),
+      verifyPayment: f.provider.verifyPayment.bind(f.provider),
+      lookupPayment: f.provider.lookupPayment.bind(f.provider),
+      cancelPayment: f.provider.cancelPayment.bind(f.provider),
+    };
+    const service = new PaymentsService(f.prisma as never, tossProvider, f.fulfillment);
+    const created = await service.createOrder(BOT_UID_A, 'GOLD_3000', 'safe_idempotency_key_0010');
+    f.provider.approve(created.order.orderId, 3_000, 'provider-payment-10');
+    const webhook = {
+      eventType: 'PAYMENT_STATUS_CHANGED',
+      orderId: created.order.orderId,
+      paymentKey: 'provider-payment-10',
+      providerStatus: 'DONE',
+      transmissionId: 'transmission-safe-0010',
+    };
+    await expect(service.reconcileTossWebhook(webhook)).resolves.toEqual({ received: true });
+    await expect(service.reconcileTossWebhook(webhook)).resolves.toEqual({ received: true });
+    expect(f.fulfillment.calls).toHaveLength(1);
+    expect(f.prisma.orders[0].status).toBe(PaymentOrderStatus.COMPLETED);
+  });
+
+  it('cancels a pending order idempotently without approving or fulfilling it', async () => {
+    const f = fixture();
+    const created = await f.service.createOrder(BOT_UID_A, 'GOLD_50000', 'safe_idempotency_key_0013');
+    await expect(f.service.cancel(BOT_UID_A, created.order.orderId))
+      .resolves.toEqual(expect.objectContaining({ status: 'cancelled' }));
+    await expect(f.service.cancel(BOT_UID_A, created.order.orderId))
+      .resolves.toEqual(expect.objectContaining({ status: 'cancelled' }));
+    expect(f.prisma.orders[0].status).toBe(PaymentOrderStatus.CANCELLED);
+    expect(f.fulfillment.calls).toHaveLength(0);
   });
 });
