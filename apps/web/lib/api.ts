@@ -157,6 +157,35 @@ export type PortalDashboard = {
   summary?: PortalMetric[];
 };
 
+export type GoldProduct = {
+  id: 'GOLD_1000' | 'GOLD_3000' | 'GOLD_5000' | 'GOLD_10000' | 'GOLD_30000' | 'GOLD_50000';
+  name: string;
+  priceKrw: number;
+  goldAmount: number;
+};
+
+export type PaymentStorefront = {
+  enabled: boolean;
+  provider: string;
+  rate: { krw: number; gold: number };
+  products: GoldProduct[];
+};
+
+export type PaymentOrder = {
+  orderId: string;
+  productId: GoldProduct['id'];
+  productName: string;
+  priceKrw: number;
+  goldAmount: number;
+  status: 'pending' | 'paid' | 'fulfilling' | 'completed' | 'failed' | 'cancelled' | 'refunded';
+  currentGold?: string;
+  createdAt: string;
+  paidAt?: string;
+  fulfilledAt?: string;
+  cancelledAt?: string;
+  refundedAt?: string;
+};
+
 export class ApiError extends Error {
   readonly statusCode: number;
   readonly code: string;
@@ -267,3 +296,25 @@ export const logout = () =>
 
 export const getPortalDashboard = () =>
   api<PortalDashboard>('/api/portal/dashboard');
+
+export const getPaymentProducts = () =>
+  api<PaymentStorefront>('/api/payments/products');
+
+export const getPaymentHistory = () =>
+  api<{ items: PaymentOrder[] }>('/api/payments/history');
+
+export const getPaymentOrder = (orderId: string) =>
+  api<PaymentOrder>(`/api/payments/orders/${encodeURIComponent(orderId)}`);
+
+export const createPaymentOrder = (productId: GoldProduct['id'], idempotencyKey: string) =>
+  api<{ order: PaymentOrder; checkoutUrl?: string; replayed: boolean }>('/api/payments/orders', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({ productId }),
+  });
+
+export const confirmPaymentOrder = (orderId: string) =>
+  api<PaymentOrder>(`/api/payments/orders/${encodeURIComponent(orderId)}/confirm`, { method: 'POST' });
+
+export const cancelPaymentOrder = (orderId: string) =>
+  api<PaymentOrder>(`/api/payments/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'POST' });

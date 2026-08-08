@@ -248,6 +248,7 @@ function Header({ auth, menuOpen, closeMenu, toggleMenu, signOut, selectMobileTa
         <a href="#characters" onClick={(event) => navigate(event, 'characters')}>내 캐릭터</a>
         <a href="#gallery" onClick={(event) => navigate(event, 'characters')}>일러스트</a>
         <a href="#ranking" onClick={(event) => navigate(event, 'rankings')}>랭킹</a>
+        <Link href="/shop" onClick={closeMenu}>골드 상점</Link>
       </nav>
       {auth.status === 'authenticated' ? (
         <div className="account-cluster">
@@ -934,7 +935,7 @@ function DashboardMessage({ title, children }: { title: string; children: React.
 }
 
 function Footer() {
-  return <footer><div><b>나테베 친목 RPG</b><p>카카오톡 친목방용 커뮤니티 게임 포털</p></div><div className="footer-links"><a href="#dashboard">게임 대시보드</a><a href="#characters">내 캐릭터</a><a href="#gallery">일러스트</a><a href="#ranking">랭킹</a></div><small>© 2026 NATEBE FRIENDSHIP RPG. ALL RIGHTS RESERVED.</small></footer>;
+  return <footer><div><b>나테베 친목 RPG</b><p>카카오톡 친목방용 커뮤니티 게임 포털</p></div><div className="footer-links"><a href="#dashboard">게임 대시보드</a><a href="#characters">내 캐릭터</a><a href="#gallery">일러스트</a><a href="#ranking">랭킹</a><Link href="/shop">골드 상점</Link></div><small>© 2026 NATEBE FRIENDSHIP RPG. ALL RIGHTS RESERVED.</small></footer>;
 }
 
 function dashboardBadge(auth: AuthState, state: DashboardState) {

@@ -31,6 +31,16 @@ enum WebLoginRequestStatus {
   EXPIRED
 }
 
+enum PaymentOrderStatus {
+  PENDING
+  PAID
+  FULFILLING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
 model Notice {
   id               String       @id @default(cuid())
   type             String       @db.VarChar(30)
@@ -78,6 +88,7 @@ model WebAccount {
   updatedAt   DateTime         @updatedAt
   lastLoginAt DateTime?
   sessions    WebSession[]
+  paymentOrders PaymentOrder[]
   @@map("web_accounts")
 }
 
@@ -125,4 +136,30 @@ model AuditLog {
   createdAt  DateTime @default(now())
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model PaymentOrder {
+  id                     String             @id @default(cuid())
+  orderId                String             @unique @db.VarChar(64)
+  webAccountId           String
+  productId              String             @db.VarChar(30)
+  priceKrw               Int
+  goldAmount             Int
+  status                 PaymentOrderStatus @default(PENDING)
+  provider               String             @db.VarChar(30)
+  providerPaymentKey     String?            @unique @db.VarChar(191)
+  idempotencyKeyHash     String?            @unique @db.VarChar(64)
+  goldBalanceAfter       BigInt?
+  failureCode            String?            @db.VarChar(64)
+  createdAt              DateTime           @default(now())
+  paidAt                 DateTime?
+  fulfillmentStartedAt   DateTime?
+  fulfilledAt            DateTime?
+  cancelledAt            DateTime?
+  refundedAt             DateTime?
+  webAccount             WebAccount         @relation(fields: [webAccountId], references: [id], onDelete: Restrict)
+
+  @@index([webAccountId, createdAt])
+  @@index([status, createdAt])
+  @@map("payment_orders")
 }

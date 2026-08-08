@@ -113,7 +113,7 @@ Invoke-RestMethod http://localhost:3001/health
 
 ## 데이터와 마이그레이션
 
-초기 마이그레이션은 `notices`, `admins`, `account_link_tokens`, `web_accounts`, `audit_logs`만 새로 추가하며 기존 테이블/컬럼을 삭제하거나 초기화하지 않습니다. UID는 `web_accounts.botUid`에 그대로 보관하도록 설계했고 새 UID 발급 또는 변환 로직은 없습니다. 토큰은 원문이 아닌 해시만 저장하도록 `tokenHash` 컬럼을 둡니다.
+초기 마이그레이션은 `notices`, `admins`, `account_link_tokens`, `web_accounts`, `audit_logs`를 추가합니다. 골드 결제 1차 마이그레이션은 기존 테이블과 데이터를 삭제하지 않고 `payment_orders`와 `PaymentOrderStatus` enum만 추가합니다. UID는 `web_accounts.botUid`에 그대로 보관하며 새 UID 발급 또는 변환 로직은 없습니다. 토큰은 원문이 아닌 해시만 저장합니다.
 
 운영 적용 전에는 반드시 PostgreSQL 네이티브 백업을 만드세요. 이번 마이그레이션은 새 테이블/enum 추가뿐이므로 롤백이 꼭 필요하면 서버를 중지하고 마이그레이션 전 DB 백업을 복원하는 것이 안전합니다. 운영에서 수동 `DROP`으로 되돌리지 마세요.
 
@@ -125,7 +125,10 @@ Invoke-RestMethod http://localhost:3001/health
 - `docker compose down`은 named volume을 보존하지만 `docker compose down -v`는 PostgreSQL과 Redis 볼륨을 삭제하므로 사용하지 마세요.
 - Redis에는 향후 임시 상태만 저장하고 결제·주문·지급의 최종 상태는 PostgreSQL에 저장해야 합니다.
 - 클라이언트 금액을 신뢰하지 않고, 가격 조회·주문번호 생성·결제 승인은 서버가 맡아야 합니다. 승인과 지급 상태를 분리하고 주문번호·결제키 중복 및 중복 지급을 차단하며 지급 재처리를 지원해야 합니다.
-- 결제 공급자는 `PAYMENT_PROVIDER=disabled`이며 실제 결제와 지급은 활성화하지 않았습니다.
+- 골드 상점은 `/shop`, 본인 주문 내역은 `/payment/history`, 결과 화면은 `/payment/success`와 `/payment/fail`입니다.
+- 결제 공급자는 기본 `PAYMENT_PROVIDER=disabled`이며 실제 결제와 지급은 활성화하지 않았습니다. `mock` provider는 `NODE_ENV=test`에서만 허용되고 운영에서 설정하면 API가 시작을 거부합니다.
+- 서버 상품 정의만 가격의 단일 소스로 사용하며 공식 환율은 `1 KRW = 2,000 GOLD`입니다. 브라우저가 보낸 `price`, `amount`, `gold`, `quantity`는 ValidationPipe에서 거부됩니다.
+- 실제 PG 승인과 주문 금액 검증 전에는 봇 지급 API를 호출하지 않습니다. 지급 내부 API와 토큰은 포털 조회 API와 분리하고 루프백 주소만 허용합니다.
 - Iris URL/토큰이 없으므로 가상의 API나 함수로 연결하지 않았습니다.
 - 자동 seed가 없으므로 예시 데이터가 운영 공지나 랭킹으로 노출되지 않습니다.
 
@@ -241,6 +244,20 @@ packages/database  Prisma 스키마와 추가형 마이그레이션
 packages/shared    공유 API 형식
 backups             수정 전 상태 기록
 ```
+
+## 골드 결제 1차 기반
+
+운영 결제는 비활성입니다. 실제 PG사와 공개 client key, 서버 secret, 승인·취소 API 계약이 확정된 뒤 `PaymentProvider` adapter만 추가합니다. PG secret, RPG 지급 토큰, DB 비밀번호는 `NEXT_PUBLIC_*`에 넣지 않습니다.
+
+```env
+PAYMENT_PROVIDER=disabled
+PAYMENT_FULFILLMENT_ENABLED=false
+RPG_PAYMENT_INTERNAL_API_URL=http://127.0.0.1:5000
+RPG_PAYMENT_INTERNAL_API_TOKEN=
+RPG_PAYMENT_INTERNAL_API_TIMEOUT_MS=5000
+```
+
+주문 상태는 `pending → paid → fulfilling → completed` 순서입니다. `orderId`, `providerPaymentKey`, `idempotencyKeyHash`가 각각 unique이며, 동일 주문 지급은 봇의 `payment.gold_fulfillment` operation ID로 다시 차단합니다. 지급 오류는 `fulfilling` 상태와 실패 코드로 남기고 `completed`로 바꾸지 않습니다. 환불은 자동화하지 않았으며 지급 여부와 골드 사용 여부, PG 취소 가능 여부를 운영자가 확인한 뒤 별도 승인 절차로 처리해야 합니다.
 # 로그인 사용자 RPG 대시보드
 
 `GET /api/portal/dashboard`는 기존 HttpOnly 세션을 검증한 뒤 세션에 연결된 UID만
