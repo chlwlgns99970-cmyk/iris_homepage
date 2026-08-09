@@ -15,6 +15,7 @@ import {
 import { resolvePortalCurrentJob, resolvePortalNickname } from '@/lib/character-image';
 import { businessInformation, paymentLegalContent } from '@/lib/payment-content';
 import { openTossPaymentWindow } from '@/lib/toss-payments';
+import { SiteFooter } from '@/components/site-footer';
 
 const jobLabels = { warrior: '전사', archer: '궁수', mage: '마법사', unknown: '직업 정보 없음' } as const;
 const quickAmountsKrw = [1_000, 5_000, 10_000, 30_000, 50_000] as const;
@@ -304,6 +305,7 @@ export default function GoldShopPage() {
 
         <LegalAndBusiness />
       </main>
+      <SiteFooter />
 
       {selected && storefront && (
         <div className="payment-modal-backdrop" onMouseDown={(event) => {

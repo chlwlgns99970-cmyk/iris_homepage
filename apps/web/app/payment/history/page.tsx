@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { getCurrentAuth, getPaymentHistory, type PaymentOrder } from '@/lib/api';
+import { SiteFooter } from '@/components/site-footer';
 
 const statusLabels: Record<PaymentOrder['status'], string> = {
   pending: '결제 대기',
@@ -53,6 +54,7 @@ export default function PaymentHistoryPage() {
         <div className="payment-page-actions"><Link className="button glass" href="/">게임 대시보드</Link><Link className="button primary" href="/shop">골드 상점</Link></div>
       </section>
     </main>
+    <SiteFooter />
   </>;
 }
 

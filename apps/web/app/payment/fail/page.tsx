@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { SiteFooter } from '@/components/site-footer';
 
 export default function PaymentFailPage() {
   return <Suspense fallback={<PaymentFailContent message="결제 결과를 확인하는 중입니다." />}>
@@ -31,5 +32,6 @@ function PaymentFailContent({ message }: { message: string }) {
         <div className="payment-page-actions"><Link className="button glass" href="/payment/history">결제 내역</Link><Link className="button primary" href="/shop">골드 상점으로 돌아가기</Link></div>
       </section>
     </main>
+    <SiteFooter />
   </>;
 }

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { confirmPaymentOrder, getCurrentAuth, type PaymentOrder } from '@/lib/api';
+import { SiteFooter } from '@/components/site-footer';
 
 export default function PaymentSuccessPage() {
   const [order, setOrder] = useState<PaymentOrder | null>(null);
@@ -37,7 +38,7 @@ export default function PaymentSuccessPage() {
 }
 
 function PaymentResultShell({ eyebrow, title, children }: { eyebrow: string; title: string; children: React.ReactNode }) {
-  return <><header className="topbar shop-topbar"><Link className="brand" href="/"><span className="brand-logo">N</span><span><b>나테베 RPG</b><small>PAYMENT</small></span></Link><Link className="account-button" href="/shop">상점으로</Link></header><main className="payment-page"><section className="payment-page-card payment-result-card"><p className="eyebrow">{eyebrow}</p><h1>{title}</h1>{children}<div className="payment-page-actions"><Link className="button glass" href="/">게임 대시보드로 돌아가기</Link><Link className="button primary" href="/shop">골드 상점으로 돌아가기</Link></div></section></main></>;
+  return <><header className="topbar shop-topbar"><Link className="brand" href="/"><span className="brand-logo">N</span><span><b>나테베 RPG</b><small>PAYMENT</small></span></Link><Link className="account-button" href="/shop">상점으로</Link></header><main className="payment-page"><section className="payment-page-card payment-result-card"><p className="eyebrow">{eyebrow}</p><h1>{title}</h1>{children}<div className="payment-page-actions"><Link className="button glass" href="/">게임 대시보드로 돌아가기</Link><Link className="button primary" href="/shop">골드 상점으로 돌아가기</Link></div></section></main><SiteFooter /></>;
 }
 
 function formatNumber(value: number) { return new Intl.NumberFormat('ko-KR').format(value); }

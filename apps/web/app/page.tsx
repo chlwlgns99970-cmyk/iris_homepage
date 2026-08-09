@@ -37,6 +37,7 @@ import {
   AUTH_SESSION_BROWSER_NOTICE,
   AUTH_SESSION_PRIMARY_NOTICE,
 } from '@/lib/auth-session-policy';
+import { SiteFooter } from '@/components/site-footer';
 
 type AuthState =
   | { status: 'loading' | 'guest' }
@@ -212,7 +213,7 @@ export default function Home() {
           selectSystem={setSelectedSystem}
         />
       </main>
-      <div className="desktop-footer"><Footer /></div>
+      <div className="desktop-footer"><SiteFooter showSectionLinks /></div>
       <div className={`toast ${toast ? 'show' : ''}`} role="status" onTransitionEnd={() => {
         if (toast) window.setTimeout(() => setToast(''), 1800);
       }}>{toast}</div>
@@ -410,6 +411,7 @@ function MobileDashboard({
       </div>
 
       <MobileTabBar activeTab={activeTabDefinition.id} selectTab={selectTab} />
+      <SiteFooter className="mobile-legal-footer" compact />
     </section>
   );
 }
@@ -932,10 +934,6 @@ function Metric({ metric: [label, value, detail] }: { metric: [string, string, s
 
 function DashboardMessage({ title, children }: { title: string; children: React.ReactNode }) {
   return <div className="dashboard-message"><Image src="/assets/rpg-world.webp" alt="" fill sizes="100vw" /><div><span className="data-badge">READ ONLY</span><h3>{title}</h3><p>{children}</p></div></div>;
-}
-
-function Footer() {
-  return <footer><div><b>나테베 친목 RPG</b><p>카카오톡 친목방용 커뮤니티 게임 포털</p></div><div className="footer-links"><a href="#dashboard">게임 대시보드</a><a href="#characters">내 캐릭터</a><a href="#gallery">일러스트</a><a href="#ranking">랭킹</a><Link href="/shop">골드 상점</Link></div><small>© 2026 NATEBE FRIENDSHIP RPG. ALL RIGHTS RESERVED.</small></footer>;
 }
 
 function dashboardBadge(auth: AuthState, state: DashboardState) {
