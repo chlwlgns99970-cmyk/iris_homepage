@@ -34,6 +34,7 @@ import {
 } from '@/lib/mobile-system-menu';
 import { shouldRefreshDashboard } from '@/lib/dashboard-refresh';
 import { fortuneView } from '@/lib/fortune-display';
+import { equipmentRenameView } from '@/lib/equipment-rename-display';
 import {
   AUTH_SESSION_BROWSER_NOTICE,
   AUTH_SESSION_PRIMARY_NOTICE,
@@ -610,6 +611,7 @@ function SystemPanel({ system, generatedAt, characterContext }: {
   characterContext: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const renameView = equipmentRenameView(system);
   async function copy() {
     try {
       await navigator.clipboard.writeText(system.command);
@@ -625,6 +627,13 @@ function SystemPanel({ system, generatedAt, characterContext }: {
         <span className="data-badge">실제 API · 읽기 전용</span>
       </div>
       <p className="feature-description">{system.description}</p>
+      {renameView && (
+        <aside className="equipment-rename-readonly" aria-label="장비 이름 변경 안내">
+          <span aria-hidden="true">✏️</span>
+          <div><small>장비 이름 변경권</small><strong>보유 {renameView.ticketQuantity}</strong></div>
+          <p>이름 변경은 카카오톡에서만 가능합니다.<code>{renameView.command}</code></p>
+        </aside>
+      )}
       {system.metrics.length > 0 && <div className="feature-metrics">{system.metrics.map((metric) => <Metric key={metric[0]} metric={metric} />)}</div>}
       <div className="feature-content">
         {system.rankings

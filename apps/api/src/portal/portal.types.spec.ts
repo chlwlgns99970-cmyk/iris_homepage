@@ -33,6 +33,17 @@ describe('portal response validation', () => {
     expect(parsed.meta).not.toHaveProperty('uid');
   });
 
+  it('preserves server-provided equipment display names and read-only ticket quantity', () => {
+    const equipment = {
+      id: 'equipment', icon: '🗡️', title: '장비창', command: '/장비창', description: '실제 장비',
+      metrics: [['이름 변경권', '3개', '카카오톡: /장비이름변경 번호 새이름']],
+      content: { type:'table', title:'보유 장비', headers:['이름'], rows:[['전설검👑']] },
+    };
+    const parsed = parsePortalDashboard({ ...valid, systems:[equipment] });
+    expect(parsed.systems).toEqual([equipment]);
+    expect(parsed).not.toHaveProperty('rename');
+  });
+
   it('rejects a raw malformed response', () => {
     expect(() => parsePortalDashboard({ users: {} })).toThrow('invalid response');
   });
