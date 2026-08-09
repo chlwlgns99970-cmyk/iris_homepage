@@ -1,7 +1,7 @@
-import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ServiceUnavailableException } from '@nestjs/common';
 import { PaymentOrderStatus, type PaymentOrder } from '@prisma/client';
 import type { GoldFulfillmentClient, GoldFulfillmentRequest } from './gold-fulfillment.client';
-import { GOLD_PRODUCTS } from './payment-products';
+import { CUSTOM_GOLD_PRODUCT_ID } from './payment-products';
 import { MockPaymentProvider, type PaymentProvider } from './payment.provider';
 import { PaymentsService } from './payments.service';
 
@@ -123,19 +123,41 @@ function confirm(service: PaymentsService, orderId: string, paymentKey: string, 
 }
 
 describe('PaymentsService', () => {
-  it('creates from productId only and replays an idempotency key without a second order', async () => {
+  it('creates from priceKrw only and replays an idempotency key without a second order', async () => {
     const f = fixture();
     const key = 'safe_idempotency_key_0001';
-    const first = await f.service.createOrder(BOT_UID_A, 'GOLD_1000', key);
-    const second = await f.service.createOrder(BOT_UID_A, 'GOLD_1000', key);
-    expect(first.order).toEqual(expect.objectContaining({ priceKrw: 1_000, goldAmount: 2_000_000 }));
+    const first = await f.service.createOrder(BOT_UID_A, 1_000, key);
+    const second = await f.service.createOrder(BOT_UID_A, 1_000, key);
+    expect(first.order).toEqual(expect.objectContaining({
+      productId: CUSTOM_GOLD_PRODUCT_ID,
+      priceKrw: 1_000,
+      goldAmount: 2_000_000,
+    }));
     expect(second.replayed).toBe(true);
     expect(f.prisma.orders).toHaveLength(1);
   });
 
+  it('rejects reuse of an idempotency key with a different amount', async () => {
+    const f = fixture();
+    const key = 'safe_idempotency_key_0014';
+    await f.service.createOrder(BOT_UID_A, 1_000, key);
+    await expect(f.service.createOrder(BOT_UID_A, 1_100, key)).rejects.toThrow(ConflictException);
+    expect(f.prisma.orders).toHaveLength(1);
+  });
+
+  it.each([0, 1, 50, 99, 101, 250, 50_100, -100, 1.5, Number.NaN])(
+    'rejects an invalid server-side amount: %p',
+    async (priceKrw) => {
+      const f = fixture();
+      await expect(f.service.createOrder(BOT_UID_A, priceKrw, 'safe_idempotency_key_0015'))
+        .rejects.toThrow(BadRequestException);
+      expect(f.prisma.orders).toHaveLength(0);
+    },
+  );
+
   it('fulfills an approved order once and never duplicates gold for an order replay', async () => {
     const f = fixture();
-    const created = await f.service.createOrder(BOT_UID_A, 'GOLD_10000', 'safe_idempotency_key_0002');
+    const created = await f.service.createOrder(BOT_UID_A, 10_000, 'safe_idempotency_key_0002');
     f.provider.approve(created.order.orderId, 10_000, 'provider-payment-1');
     const first = await confirm(f.service, created.order.orderId, 'provider-payment-1', 10_000);
     const second = await confirm(f.service, created.order.orderId, 'provider-payment-1', 10_000);
@@ -152,7 +174,7 @@ describe('PaymentsService', () => {
 
   it('rejects provider amount mismatch and grants zero gold', async () => {
     const f = fixture();
-    const created = await f.service.createOrder(BOT_UID_A, 'GOLD_3000', 'safe_idempotency_key_0003');
+    const created = await f.service.createOrder(BOT_UID_A, 3_000, 'safe_idempotency_key_0003');
     f.provider.approve(created.order.orderId, 1, 'provider-payment-2');
     await expect(confirm(f.service, created.order.orderId, 'provider-payment-2', 3_000)).rejects.toThrow(ConflictException);
     expect(f.fulfillment.calls).toHaveLength(0);
@@ -161,7 +183,7 @@ describe('PaymentsService', () => {
 
   it('rejects a manipulated callback amount before provider approval and leaves the order pending', async () => {
     const f = fixture();
-    const created = await f.service.createOrder(BOT_UID_A, 'GOLD_10000', 'safe_idempotency_key_0008');
+    const created = await f.service.createOrder(BOT_UID_A, 10_000, 'safe_idempotency_key_0008');
     f.provider.approve(created.order.orderId, 10_000, 'provider-payment-8');
     await expect(confirm(f.service, created.order.orderId, 'provider-payment-8', 1)).rejects.toThrow(ConflictException);
     expect(f.fulfillment.calls).toHaveLength(0);
@@ -175,30 +197,38 @@ describe('PaymentsService', () => {
       fulfill: jest.fn(),
     };
     const service = new PaymentsService(f.prisma as never, f.provider, disabledFulfillment);
-    const created = await service.createOrder(BOT_UID_A, 'GOLD_1000', 'safe_idempotency_key_0009');
+    const created = await service.createOrder(BOT_UID_A, 1_000, 'safe_idempotency_key_0009');
     f.provider.approve(created.order.orderId, 1_000, 'provider-payment-9');
     await expect(confirm(service, created.order.orderId, 'provider-payment-9', 1_000))
       .resolves.toEqual(expect.objectContaining({ status: 'paid' }));
     expect(disabledFulfillment.fulfill).not.toHaveBeenCalled();
   });
 
-  it.each(GOLD_PRODUCTS)(
-    'approves the server catalog amount for $id without granting gold in Sandbox',
-    async (product) => {
+  it.each([
+    [100, 200_000],
+    [200, 400_000],
+    [500, 1_000_000],
+    [1_000, 2_000_000],
+    [12_300, 24_600_000],
+    [50_000, 100_000_000],
+  ])(
+    'approves the server-calculated amount for %i KRW without granting gold in Sandbox',
+    async (priceKrw, goldAmount) => {
       const f = fixture();
       const disabledFulfillment: GoldFulfillmentClient = { enabled: false, fulfill: jest.fn() };
       const service = new PaymentsService(f.prisma as never, f.provider, disabledFulfillment);
       const created = await service.createOrder(
         BOT_UID_A,
-        product.id,
-        `safe_catalog_approval_${product.priceKrw}`,
+        priceKrw,
+        `safe_custom_approval_${priceKrw}`,
       );
-      f.provider.approve(created.order.orderId, product.priceKrw, `provider-${product.priceKrw}`);
-      await expect(confirm(service, created.order.orderId, `provider-${product.priceKrw}`, product.priceKrw))
+      f.provider.approve(created.order.orderId, priceKrw, `provider-${priceKrw}`);
+      await expect(confirm(service, created.order.orderId, `provider-${priceKrw}`, priceKrw))
         .resolves.toEqual(expect.objectContaining({
           status: 'paid',
-          priceKrw: product.priceKrw,
-          goldAmount: product.goldAmount,
+          productId: CUSTOM_GOLD_PRODUCT_ID,
+          priceKrw,
+          goldAmount,
         }));
       expect(disabledFulfillment.fulfill).not.toHaveBeenCalled();
     },
@@ -206,7 +236,7 @@ describe('PaymentsService', () => {
 
   it('rejects a changed orderId and an order owned by another account', async () => {
     const f = fixture();
-    const created = await f.service.createOrder(BOT_UID_A, 'GOLD_1000', 'safe_idempotency_key_0011');
+    const created = await f.service.createOrder(BOT_UID_A, 1_000, 'safe_idempotency_key_0011');
     f.provider.approve(created.order.orderId, 1_000, 'provider-payment-11');
     await expect(f.service.confirm(BOT_UID_A, {
       orderId: 'GOLD_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
@@ -224,7 +254,7 @@ describe('PaymentsService', () => {
 
   it('does not approve or grant gold when the provider reports failure', async () => {
     const f = fixture();
-    const created = await f.service.createOrder(BOT_UID_A, 'GOLD_3000', 'safe_idempotency_key_0012');
+    const created = await f.service.createOrder(BOT_UID_A, 3_000, 'safe_idempotency_key_0012');
     f.provider.fail(created.order.orderId, 3_000);
     await expect(confirm(f.service, created.order.orderId, 'provider-payment-12', 3_000))
       .rejects.toThrow(ConflictException);
@@ -234,7 +264,7 @@ describe('PaymentsService', () => {
 
   it('does not mark a fulfillment failure completed and permits no cross-account history', async () => {
     const f = fixture();
-    const created = await f.service.createOrder(BOT_UID_A, 'GOLD_5000', 'safe_idempotency_key_0004');
+    const created = await f.service.createOrder(BOT_UID_A, 5_000, 'safe_idempotency_key_0004');
     f.provider.approve(created.order.orderId, 5_000, 'provider-payment-3');
     f.fulfillment.fail = true;
     await expect(confirm(f.service, created.order.orderId, 'provider-payment-3', 5_000)).rejects.toThrow('injected');
@@ -249,8 +279,8 @@ describe('PaymentsService', () => {
 
   it('blocks a duplicate provider payment key across different orders', async () => {
     const f = fixture();
-    const a = await f.service.createOrder(BOT_UID_A, 'GOLD_1000', 'safe_idempotency_key_0005');
-    const b = await f.service.createOrder(BOT_UID_A, 'GOLD_3000', 'safe_idempotency_key_0006');
+    const a = await f.service.createOrder(BOT_UID_A, 1_000, 'safe_idempotency_key_0005');
+    const b = await f.service.createOrder(BOT_UID_A, 3_000, 'safe_idempotency_key_0006');
     f.provider.approve(a.order.orderId, 1_000, 'same-provider-key');
     f.provider.approve(b.order.orderId, 3_000, 'same-provider-key');
     await confirm(f.service, a.order.orderId, 'same-provider-key', 1_000);
@@ -261,7 +291,7 @@ describe('PaymentsService', () => {
   it('refuses order creation while the payment provider is disabled', async () => {
     const f = fixture();
     const disabled = new PaymentsService(f.prisma as never, { ...f.provider, enabled: false } as never, f.fulfillment);
-    await expect(disabled.createOrder(BOT_UID_A, 'GOLD_1000', 'safe_idempotency_key_0007'))
+    await expect(disabled.createOrder(BOT_UID_A, 1_000, 'safe_idempotency_key_0007'))
       .rejects.toThrow(ServiceUnavailableException);
   });
 
@@ -277,7 +307,7 @@ describe('PaymentsService', () => {
       cancelPayment: f.provider.cancelPayment.bind(f.provider),
     };
     const service = new PaymentsService(f.prisma as never, tossProvider, f.fulfillment);
-    const created = await service.createOrder(BOT_UID_A, 'GOLD_3000', 'safe_idempotency_key_0010');
+    const created = await service.createOrder(BOT_UID_A, 3_000, 'safe_idempotency_key_0010');
     f.provider.approve(created.order.orderId, 3_000, 'provider-payment-10');
     const webhook = {
       eventType: 'PAYMENT_STATUS_CHANGED',
@@ -294,7 +324,7 @@ describe('PaymentsService', () => {
 
   it('cancels a pending order idempotently without approving or fulfilling it', async () => {
     const f = fixture();
-    const created = await f.service.createOrder(BOT_UID_A, 'GOLD_50000', 'safe_idempotency_key_0013');
+    const created = await f.service.createOrder(BOT_UID_A, 50_000, 'safe_idempotency_key_0013');
     await expect(f.service.cancel(BOT_UID_A, created.order.orderId))
       .resolves.toEqual(expect.objectContaining({ status: 'cancelled' }));
     await expect(f.service.cancel(BOT_UID_A, created.order.orderId))

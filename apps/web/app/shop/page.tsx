@@ -9,7 +9,6 @@ import {
   getPaymentProducts,
   getPortalDashboard,
   logout,
-  type GoldProduct,
   type PaymentStorefront,
   type PortalDashboard,
 } from '@/lib/api';
@@ -18,14 +17,20 @@ import { businessInformation, paymentLegalContent } from '@/lib/payment-content'
 import { openTossPaymentWindow } from '@/lib/toss-payments';
 
 const jobLabels = { warrior: '전사', archer: '궁수', mage: '마법사', unknown: '직업 정보 없음' } as const;
+const quickAmountsKrw = [1_000, 5_000, 10_000, 30_000, 50_000] as const;
 
 type AuthState = 'loading' | 'guest' | 'authenticated';
+type PurchaseQuote = { priceKrw: number; goldAmount: number };
+type AmountValidation = { valid: true; priceKrw: number } | { valid: false; message: string };
 
 export default function GoldShopPage() {
   const [auth, setAuth] = useState<AuthState>('loading');
   const [storefront, setStorefront] = useState<PaymentStorefront | null>(null);
+  const [storefrontError, setStorefrontError] = useState('');
   const [dashboard, setDashboard] = useState<PortalDashboard | null>(null);
-  const [selected, setSelected] = useState<GoldProduct | null>(null);
+  const [amountInput, setAmountInput] = useState('');
+  const [inputFormatMessage, setInputFormatMessage] = useState('');
+  const [selected, setSelected] = useState<PurchaseQuote | null>(null);
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -35,12 +40,14 @@ export default function GoldShopPage() {
   useEffect(() => {
     let active = true;
     getPaymentProducts()
-      .then((products) => {
-        if (active) setStorefront(products);
+      .then((response) => {
+        if (!active) return;
+        setStorefront(response);
+        setStorefrontError('');
       })
       .catch((error) => {
         if (!active) return;
-        setMessage(error instanceof Error ? error.message : '상점 정보를 불러오지 못했습니다.');
+        setStorefrontError(error instanceof Error ? error.message : '상점 정보를 불러오지 못했습니다.');
       });
 
     getCurrentAuth()
@@ -87,11 +94,42 @@ export default function GoldShopPage() {
     return `${nickname} · ${jobLabels[job]}`;
   }, [dashboard]);
 
-  function openModal(product: GoldProduct, button: HTMLButtonElement) {
+  const currentGold = useMemo(() => resolveCurrentGold(dashboard), [dashboard]);
+  const amountValidation = useMemo(
+    () => validatePaymentAmount(amountInput, storefront?.policy ?? null),
+    [amountInput, storefront],
+  );
+  const validationMessage = inputFormatMessage || (amountValidation.valid ? '' : amountValidation.message);
+  const estimatedGold = amountValidation.valid && storefront
+    ? amountValidation.priceKrw * storefront.policy.goldPerKrw
+    : 0;
+
+  function updateAmount(rawValue: string) {
+    const withoutGrouping = rawValue.replaceAll(',', '');
+    const digitsOnly = withoutGrouping.replace(/\D/g, '');
+    const normalized = digitsOnly.replace(/^0+(?=\d)/, '');
+    setAmountInput(normalized);
+    setInputFormatMessage(withoutGrouping === digitsOnly
+      ? ''
+      : '숫자만 입력해 주세요. 음수와 소수점은 사용할 수 없습니다.');
+    setMessage('');
+  }
+
+  function chooseQuickAmount(priceKrw: number) {
+    setAmountInput(String(priceKrw));
+    setInputFormatMessage('');
+    setMessage('');
+  }
+
+  function openModal(button: HTMLButtonElement) {
+    if (!amountValidation.valid || !storefront) return;
     openerRef.current = button;
     setAccepted(false);
     setMessage('');
-    setSelected(product);
+    setSelected({
+      priceKrw: amountValidation.priceKrw,
+      goldAmount: amountValidation.priceKrw * storefront.policy.goldPerKrw,
+    });
   }
 
   function closeModal() {
@@ -103,21 +141,21 @@ export default function GoldShopPage() {
   async function purchase() {
     if (!selected || !storefront || busy) return;
     if (!storefront.enabled) {
-      setMessage('현재 결제 시스템 준비 중입니다.');
+      setMessage('현재 결제 시스템 준비 중입니다. 정식 결제 오픈 후 이용할 수 있습니다.');
       return;
     }
-    if (!accepted) return;
+    if (auth !== 'authenticated' || !accepted) return;
     setBusy(true);
     setMessage('');
     try {
       const idempotencyKey = crypto.randomUUID().replaceAll('-', '_');
-      const result = await createPaymentOrder(selected.id, idempotencyKey);
+      const result = await createPaymentOrder(selected.priceKrw, idempotencyKey);
       if (
-        result.order.productId !== selected.id
+        result.order.productId !== 'GOLD_CUSTOM'
         || result.order.priceKrw !== selected.priceKrw
         || result.order.goldAmount !== selected.goldAmount
       ) {
-        throw new Error('서버 주문 정보가 선택한 상품과 일치하지 않습니다.');
+        throw new Error('서버 주문 정보가 입력한 금액과 일치하지 않습니다.');
       }
       if (result.checkout?.kind === 'toss-widget') {
         const origin = window.location.origin;
@@ -155,11 +193,11 @@ export default function GoldShopPage() {
       <ShopHeader auth={auth} signOut={signOut} />
       <main className="shop-page">
         <section className="shop-hero">
-          <p className="eyebrow">SAFE GOLD STORE</p>
-          <h1>골드 상점</h1>
-          <p>필요한 골드를 안전하게 충전하세요.</p>
+          <p className="eyebrow">SAFE GOLD CHARGE</p>
+          <h1>골드 충전</h1>
+          <p>원하는 금액을 직접 입력하고 지급 예정 골드를 확인하세요.</p>
           <div className="shop-rate"><b>100원</b><span>=</span><strong>200,000 GOLD</strong></div>
-          {!storefront?.enabled && (
+          {storefront?.enabled === false && (
             <div className="shop-disabled-notice" role="status">
               실제 PG 연동 전 안전 점검 단계입니다. 현재 결제와 골드 지급은 활성화되지 않았습니다.
             </div>
@@ -172,61 +210,116 @@ export default function GoldShopPage() {
           )}
         </section>
 
-        <section className="shop-section" aria-labelledby="products-title">
+        <section className="shop-section" aria-labelledby="charge-title">
           <div className="shop-section-heading">
-            <div><p className="eyebrow">GOLD PACKAGES</p><h2 id="products-title">판매 상품</h2></div>
+            <div><p className="eyebrow">CUSTOM AMOUNT</p><h2 id="charge-title">원하는 만큼 충전</h2></div>
             <Link className="shop-text-link" href="/payment/history">내 결제 내역</Link>
           </div>
           {auth === 'guest' && (
             <div className="shop-auth-notice">
-              <div><b>골드 구매는 웹 인증 후 이용할 수 있습니다.</b><span>UID는 상점 화면에 표시하지 않습니다.</span></div>
+              <div><b>골드 충전은 웹 인증 후 이용할 수 있습니다.</b><span>기존 홈페이지 로그인 세션을 그대로 사용합니다.</span></div>
               <Link className="button primary" href="/connect">웹 인증하기</Link>
             </div>
           )}
-          {auth === 'authenticated' && (
-            <div className="shop-target"><small>구매 대상</small><b>{purchaseTarget}</b></div>
-          )}
-          <div className="gold-product-grid">
-            {(storefront?.products ?? []).map((product) => (
-              <article className="gold-product-card" key={product.id}>
-                <span className="gold-product-icon" aria-hidden="true">G</span>
-                <small>{product.id}</small>
-                <h3>{formatNumber(product.goldAmount)} GOLD</h3>
-                <p>{formatNumber(product.priceKrw)}원</p>
-                {storefront?.enabled && auth === 'guest' ? (
-                  <Link className="gold-buy-button" href="/connect">웹 인증하기</Link>
-                ) : (
+
+          <div className="gold-charge-layout">
+            <article className="gold-charge-card">
+              <span className="gold-charge-symbol" aria-hidden="true">G</span>
+              <div>
+                <p className="eyebrow">GOLD CHARGE</p>
+                <h3>결제 금액을 입력하세요</h3>
+                <p className="gold-charge-rate">100원당 <strong>200,000 골드</strong></p>
+              </div>
+
+              <label className="payment-input-label" htmlFor="payment-amount">
+                <span>결제 금액</span>
+                <div className="payment-amount-control">
+                  <input
+                    id="payment-amount"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9,]*"
+                    autoComplete="off"
+                    placeholder="결제할 금액을 입력하세요."
+                    value={displayAmountInput(amountInput)}
+                    disabled={!storefront}
+                    aria-invalid={Boolean(validationMessage)}
+                    aria-describedby="payment-amount-help"
+                    onChange={(event) => updateAmount(event.target.value)}
+                  />
+                  <span>원</span>
+                </div>
+              </label>
+              <p id="payment-amount-help" className={validationMessage ? 'payment-amount-error' : 'payment-amount-help'}>
+                {validationMessage || (storefront
+                  ? `${formatNumber(storefront.policy.minPaymentKrw)}원부터 ${formatNumber(storefront.policy.maxPaymentKrw)}원까지 ${formatNumber(storefront.policy.paymentStepKrw)}원 단위로 입력할 수 있습니다.`
+                  : '결제 정책을 불러오는 중입니다.')}
+              </p>
+              {storefrontError && <p className="payment-amount-error" role="alert">{storefrontError}</p>}
+
+              <div className="gold-estimate" aria-live="polite">
+                <span>지급 예정 골드</span>
+                <strong>{formatNumber(estimatedGold)} GOLD</strong>
+              </div>
+
+              <div className="quick-amounts" aria-label="빠른 금액 선택">
+                {quickAmountsKrw.map((priceKrw) => (
                   <button
-                    className="gold-buy-button"
+                    key={priceKrw}
                     type="button"
-                    disabled={Boolean(storefront?.enabled && auth !== 'authenticated')}
-                    onClick={(event) => openModal(product, event.currentTarget)}
+                    disabled={!storefront || priceKrw > storefront.policy.maxPaymentKrw}
+                    onClick={() => chooseQuickAmount(priceKrw)}
                   >
-                    {storefront?.sandbox ? '테스트 결제' : '구매하기'}
+                    {formatNumber(priceKrw)}원
                   </button>
-                )}
-              </article>
-            ))}
+                ))}
+              </div>
+
+              {auth === 'guest' ? (
+                <Link className="gold-charge-submit" href="/connect">웹 인증 후 구매 확인</Link>
+              ) : (
+                <button
+                  className="gold-charge-submit"
+                  type="button"
+                  disabled={auth !== 'authenticated' || !amountValidation.valid || !storefront}
+                  onClick={(event) => openModal(event.currentTarget)}
+                >
+                  구매 확인
+                </button>
+              )}
+            </article>
+
+            <aside className="shop-account-summary" aria-label="충전 대상 정보">
+              <p className="eyebrow">CHARGE TARGET</p>
+              <h3>충전 대상</h3>
+              <dl>
+                <div><dt>현재 캐릭터</dt><dd>{purchaseTarget}</dd></div>
+                <div><dt>현재 보유 골드</dt><dd>{currentGold}</dd></div>
+                <div><dt>결제 상태</dt><dd>{storefront?.enabled ? (storefront.sandbox ? 'Sandbox' : '사용 가능') : '준비 중'}</dd></div>
+              </dl>
+              <p>결제 금액과 골드는 서버에서 다시 검증하며, 결제가 비활성화된 동안 주문이나 지급은 생성되지 않습니다.</p>
+            </aside>
           </div>
         </section>
 
         <LegalAndBusiness />
       </main>
 
-      {selected && (
+      {selected && storefront && (
         <div className="payment-modal-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) closeModal();
         }}>
           <section className="payment-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">
             <button ref={closeRef} className="payment-modal-close" type="button" aria-label="닫기" onClick={closeModal}>×</button>
             <p className="eyebrow">PURCHASE CONFIRMATION</p>
-            <h2 id="payment-modal-title">구매 내용을 확인해 주세요</h2>
+            <h2 id="payment-modal-title">구매 확인</h2>
             <dl>
-              <div><dt>구매 상품</dt><dd>{formatNumber(selected.goldAmount)} 골드</dd></div>
               <div><dt>결제 금액</dt><dd>{formatNumber(selected.priceKrw)}원</dd></div>
+              <div><dt>지급 예정 골드</dt><dd>{formatNumber(selected.goldAmount)} GOLD</dd></div>
               <div><dt>지급 대상</dt><dd>{purchaseTarget}</dd></div>
+              <div><dt>환율</dt><dd>{formatNumber(storefront.policy.paymentStepKrw)}원 = {formatNumber(storefront.policy.paymentStepKrw * storefront.policy.goldPerKrw)} GOLD</dd></div>
             </dl>
-            <p className="payment-modal-guide">결제 승인과 서버 검증이 완료된 뒤 해당 캐릭터에 골드가 지급됩니다.</p>
+            <p className="payment-modal-guide">결제 승인 금액을 서버 주문 금액과 다시 대조한 뒤에만 골드 지급 절차를 시작합니다.</p>
             <label className="payment-agreement">
               <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
               <span>상품·공급 시기·청약철회 및 환불 안내를 확인했습니다.</span>
@@ -237,10 +330,10 @@ export default function GoldShopPage() {
               <button
                 className="primary"
                 type="button"
-                disabled={busy || Boolean(storefront?.enabled && !accepted)}
+                disabled={busy || Boolean(storefront.enabled && (!accepted || auth !== 'authenticated'))}
                 onClick={purchase}
               >
-                {storefront?.sandbox
+                {storefront.sandbox
                   ? `${formatNumber(selected.priceKrw)}원 테스트 결제`
                   : `${formatNumber(selected.priceKrw)}원 결제하기`}
               </button>
@@ -250,6 +343,44 @@ export default function GoldShopPage() {
       )}
     </>
   );
+}
+
+function validatePaymentAmount(
+  value: string,
+  policy: PaymentStorefront['policy'] | null,
+): AmountValidation {
+  if (!value || !policy) return { valid: false, message: '' };
+  const priceKrw = Number(value);
+  if (!Number.isSafeInteger(priceKrw)) return { valid: false, message: '결제 금액은 정수로 입력해 주세요.' };
+  if (priceKrw < policy.minPaymentKrw) {
+    return { valid: false, message: `최소 결제 금액은 ${formatNumber(policy.minPaymentKrw)}원입니다.` };
+  }
+  if (priceKrw > policy.maxPaymentKrw) {
+    return { valid: false, message: `최대 결제 금액은 ${formatNumber(policy.maxPaymentKrw)}원입니다.` };
+  }
+  if (priceKrw % policy.paymentStepKrw !== 0) {
+    return { valid: false, message: `결제 금액은 ${formatNumber(policy.paymentStepKrw)}원 단위로 입력해 주세요.` };
+  }
+  return { valid: true, priceKrw };
+}
+
+function displayAmountInput(value: string) {
+  if (!value) return '';
+  const amount = Number(value);
+  return Number.isSafeInteger(amount) ? formatNumber(amount) : value;
+}
+
+function resolveCurrentGold(dashboard: PortalDashboard | null) {
+  if (!dashboard) return '정보 확인 중';
+  const rows = [
+    ...(dashboard.summary ?? []),
+    ...dashboard.systems.flatMap((system) => system.metrics ?? []),
+  ];
+  const gold = rows.find(([label]) => {
+    const normalized = label.toLocaleLowerCase('ko-KR');
+    return normalized.includes('골드') || normalized.includes('gold');
+  });
+  return gold?.[1] ?? '정보 없음';
 }
 
 function ShopHeader({ auth, signOut }: { auth: AuthState; signOut: () => void }) {
@@ -266,7 +397,7 @@ function LegalAndBusiness() {
   return <section className="shop-section legal-section" aria-labelledby="legal-title">
     <div className="shop-section-heading"><div><p className="eyebrow">PURCHASE INFORMATION</p><h2 id="legal-title">거래 및 환불 안내</h2></div></div>
     <div className="legal-grid">
-      <article><h3>상품 공급</h3><p>상품명·가격·지급 골드는 각 상품 카드와 구매 확인창에 표시됩니다.</p><p>{paymentLegalContent.supply}</p></article>
+      <article><h3>상품 공급</h3><p>결제 금액과 지급 예정 골드는 입력 화면과 구매 확인창에 표시됩니다.</p><p>{paymentLegalContent.supply}</p></article>
       <article><h3>청약철회 및 환불</h3><p>{paymentLegalContent.withdrawal}</p><p>{paymentLegalContent.refund}</p></article>
       <article><h3>미성년자 안내</h3><p>{paymentLegalContent.minor}</p></article>
       <article><h3>약관과 개인정보</h3><p>실제 결제 오픈 전 사업자가 검토한 이용약관과 개인정보처리방침의 최종본을 게시합니다.</p></article>

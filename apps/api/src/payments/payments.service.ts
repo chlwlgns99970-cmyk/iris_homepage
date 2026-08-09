@@ -14,7 +14,14 @@ import {
   GOLD_FULFILLMENT,
   type GoldFulfillmentClient,
 } from './gold-fulfillment.client';
-import { getGoldProduct, GOLD_PRODUCTS, type GoldProductId } from './payment-products';
+import {
+  createGoldPurchase,
+  CUSTOM_GOLD_PRODUCT_ID,
+  goldOrderName,
+  isValidStoredGoldOrder,
+  PAYMENT_POLICY,
+  type GoldPurchase,
+} from './payment-products';
 import { PAYMENT_PROVIDER, type PaymentProvider } from './payment.provider';
 
 const ORDER_ID_PATTERN = /^GOLD_[A-F0-9]{32}$/;
@@ -59,12 +66,11 @@ export class PaymentsService {
       provider: this.provider.enabled ? this.provider.name : 'disabled',
       sandbox: this.provider.sandbox,
       fulfillmentEnabled: this.fulfillment.enabled,
-      rate: { krw: 1, gold: 2_000 },
-      products: GOLD_PRODUCTS,
+      policy: PAYMENT_POLICY,
     };
   }
 
-  async createOrder(botUid: string, productId: GoldProductId, idempotencyKey: string) {
+  async createOrder(botUid: string, priceKrw: number, idempotencyKey: string) {
     this.assertProviderEnabled();
     if (!IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
       throw new BadRequestException({
@@ -72,14 +78,12 @@ export class PaymentsService {
         message: '안전한 주문 멱등키가 필요합니다.',
       });
     }
-    const product = getGoldProduct(productId);
+    const purchase = createGoldPurchase(priceKrw);
     const account = await this.account(botUid);
     const idempotencyKeyHash = createHash('sha256').update(idempotencyKey, 'utf8').digest('hex');
     const existing = await this.prisma.paymentOrder.findUnique({ where: { idempotencyKeyHash } });
     if (existing) {
-      if (existing.webAccountId !== account.id) {
-        throw new ConflictException({ code: 'PAYMENT_IDEMPOTENCY_CONFLICT', message: '주문을 생성할 수 없습니다.' });
-      }
+      this.assertIdempotentOrder(existing, account.id, purchase);
       return this.replayOrder(existing, account.id);
     }
 
@@ -90,9 +94,9 @@ export class PaymentsService {
         data: {
           orderId,
           webAccountId: account.id,
-          productId: product.id,
-          priceKrw: product.priceKrw,
-          goldAmount: product.goldAmount,
+          productId: CUSTOM_GOLD_PRODUCT_ID,
+          priceKrw: purchase.priceKrw,
+          goldAmount: purchase.goldAmount,
           provider: this.provider.name,
           idempotencyKeyHash,
         },
@@ -100,21 +104,24 @@ export class PaymentsService {
     } catch (error) {
       if ((error as { code?: string }).code === 'P2002') {
         const replay = await this.prisma.paymentOrder.findUnique({ where: { idempotencyKeyHash } });
-        if (replay?.webAccountId === account.id) return this.replayOrder(replay, account.id);
+        if (replay) {
+          this.assertIdempotentOrder(replay, account.id, purchase);
+          return this.replayOrder(replay, account.id);
+        }
       }
       throw error;
     }
 
     await this.audit('payment_order_created', account.id, order.orderId, {
-      productId: product.id,
-      priceKrw: product.priceKrw,
-      goldAmount: product.goldAmount,
+      productId: CUSTOM_GOLD_PRODUCT_ID,
+      priceKrw: purchase.priceKrw,
+      goldAmount: purchase.goldAmount,
     });
     try {
       const created = await this.provider.createPayment({
         orderId: order.orderId,
-        amountKrw: product.priceKrw,
-        orderName: product.name,
+        amountKrw: purchase.priceKrw,
+        orderName: purchase.name,
         customerKey: this.customerKey(account.id),
       });
       return {
@@ -155,8 +162,7 @@ export class PaymentsService {
       return this.safeOrder(order);
     }
 
-    const product = getGoldProduct(order.productId);
-    if (order.priceKrw !== product.priceKrw || order.goldAmount !== product.goldAmount) {
+    if (!isValidStoredGoldOrder(order)) {
       await this.failOrder(order, account.id, 'order_product_mismatch');
       throw new ConflictException({ code: 'PAYMENT_ORDER_INVALID', message: '주문 정보를 안전하게 확인하지 못했습니다.' });
     }
@@ -221,6 +227,9 @@ export class PaymentsService {
       include: { webAccount: { select: { botUid: true } } },
     });
     if (!stored || stored.provider !== 'toss') return { received: true };
+    if (!isValidStoredGoldOrder(stored)) {
+      throw new ConflictException({ code: 'PAYMENT_ORDER_INVALID', message: '주문 정보를 안전하게 확인하지 못했습니다.' });
+    }
 
     const verified = await this.provider.lookupPayment(stored.orderId);
     if (
@@ -307,11 +316,13 @@ export class PaymentsService {
     if (order.status !== PaymentOrderStatus.PENDING) {
       return { order: this.safeOrder(order), checkoutUrl: undefined, checkout: undefined, replayed: true };
     }
-    const product = getGoldProduct(order.productId);
+    if (!isValidStoredGoldOrder(order)) {
+      throw new ConflictException({ code: 'PAYMENT_ORDER_INVALID', message: '주문 정보를 안전하게 확인하지 못했습니다.' });
+    }
     const created = await this.provider.createPayment({
       orderId: order.orderId,
       amountKrw: order.priceKrw,
-      orderName: product.name,
+      orderName: goldOrderName(order.goldAmount),
       customerKey: this.customerKey(webAccountId),
     });
     return {
@@ -349,6 +360,9 @@ export class PaymentsService {
 
   private async fulfillApprovedOrder(botUid: string, webAccountId: string, initialOrder: PaymentOrder) {
     let order = initialOrder;
+    if (!isValidStoredGoldOrder(order)) {
+      throw new ConflictException({ code: 'PAYMENT_ORDER_INVALID', message: '주문 정보를 안전하게 확인하지 못했습니다.' });
+    }
     if (order.status === PaymentOrderStatus.COMPLETED) return this.safeOrder(order);
     if (order.status === PaymentOrderStatus.PAID && !this.fulfillment.enabled) return this.safeOrder(order);
 
@@ -443,12 +457,22 @@ export class PaymentsService {
     return `customer_${createHash('sha256').update(webAccountId, 'utf8').digest('hex').slice(0, 32)}`;
   }
 
+  private assertIdempotentOrder(order: PaymentOrder, webAccountId: string, purchase: GoldPurchase) {
+    if (
+      order.webAccountId !== webAccountId
+      || order.priceKrw !== purchase.priceKrw
+      || order.goldAmount !== purchase.goldAmount
+      || !isValidStoredGoldOrder(order)
+    ) {
+      throw new ConflictException({ code: 'PAYMENT_IDEMPOTENCY_CONFLICT', message: '주문을 생성할 수 없습니다.' });
+    }
+  }
+
   private safeOrder(order: PaymentOrder): SafeOrder {
-    const product = getGoldProduct(order.productId);
     return {
       orderId: order.orderId,
       productId: order.productId,
-      productName: product.name,
+      productName: goldOrderName(order.goldAmount),
       priceKrw: order.priceKrw,
       goldAmount: order.goldAmount,
       status: order.status.toLowerCase(),

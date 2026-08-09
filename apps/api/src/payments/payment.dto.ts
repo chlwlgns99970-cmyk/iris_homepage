@@ -1,12 +1,12 @@
-import { IsIn, IsInt, IsString, Length, Matches, Min } from 'class-validator';
-import { GOLD_PRODUCTS, type GoldProductId } from './payment-products';
-
-const productIds = GOLD_PRODUCTS.map((product) => product.id);
+import { IsDivisibleBy, IsInt, IsString, Length, Matches, Max, Min } from 'class-validator';
+import { MAX_PAYMENT_KRW, MIN_PAYMENT_KRW, PAYMENT_STEP_KRW } from './payment-products';
 
 export class CreatePaymentOrderDto {
-  @IsString()
-  @IsIn(productIds)
-  productId!: GoldProductId;
+  @IsInt()
+  @Min(MIN_PAYMENT_KRW)
+  @Max(MAX_PAYMENT_KRW)
+  @IsDivisibleBy(PAYMENT_STEP_KRW)
+  priceKrw!: number;
 }
 
 export class ConfirmPaymentDto {

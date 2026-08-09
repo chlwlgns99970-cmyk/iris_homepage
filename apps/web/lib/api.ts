@@ -157,20 +157,17 @@ export type PortalDashboard = {
   summary?: PortalMetric[];
 };
 
-export type GoldProduct = {
-  id: 'GOLD_1000' | 'GOLD_3000' | 'GOLD_5000' | 'GOLD_10000' | 'GOLD_30000' | 'GOLD_50000';
-  name: string;
-  priceKrw: number;
-  goldAmount: number;
-};
-
 export type PaymentStorefront = {
   enabled: boolean;
   provider: string;
   sandbox: boolean;
   fulfillmentEnabled: boolean;
-  rate: { krw: number; gold: number };
-  products: GoldProduct[];
+  policy: {
+    minPaymentKrw: number;
+    maxPaymentKrw: number;
+    paymentStepKrw: number;
+    goldPerKrw: number;
+  };
 };
 
 export type TossWidgetCheckout = {
@@ -181,7 +178,7 @@ export type TossWidgetCheckout = {
 
 export type PaymentOrder = {
   orderId: string;
-  productId: GoldProduct['id'];
+  productId: string;
   productName: string;
   priceKrw: number;
   goldAmount: number;
@@ -314,7 +311,7 @@ export const getPaymentHistory = () =>
 export const getPaymentOrder = (orderId: string) =>
   api<PaymentOrder>(`/api/payments/orders/${encodeURIComponent(orderId)}`);
 
-export const createPaymentOrder = (productId: GoldProduct['id'], idempotencyKey: string) =>
+export const createPaymentOrder = (priceKrw: number, idempotencyKey: string) =>
   api<{
     order: PaymentOrder;
     checkoutUrl?: string;
@@ -323,7 +320,7 @@ export const createPaymentOrder = (productId: GoldProduct['id'], idempotencyKey:
   }>('/api/payments/orders', {
     method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey },
-    body: JSON.stringify({ productId }),
+    body: JSON.stringify({ priceKrw }),
   });
 
 export const confirmPaymentOrder = (orderId: string, paymentKey: string, amount: number) =>

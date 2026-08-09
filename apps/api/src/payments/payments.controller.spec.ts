@@ -15,7 +15,11 @@ describe('PaymentsController security boundary', () => {
     enforceRateLimit: jest.fn(async () => undefined),
   };
   const payments = {
-    storefront: jest.fn(() => ({ enabled: false, provider: 'disabled', products: [] })),
+    storefront: jest.fn(() => ({
+      enabled: false,
+      provider: 'disabled',
+      policy: { minPaymentKrw: 100, maxPaymentKrw: 50_000, paymentStepKrw: 100, goldPerKrw: 2_000 },
+    })),
     history: jest.fn(async () => ({ items: [] })),
     getOrder: jest.fn(async () => ({ orderId: 'safe' })),
     createOrder: jest.fn(async () => ({ order: { orderId: 'safe' } })),
@@ -52,10 +56,13 @@ describe('PaymentsController security boundary', () => {
   });
 
   it.each([
-    { productId: 'GOLD_1000', price: 1 },
-    { productId: 'GOLD_1000', amount: 1 },
-    { productId: 'GOLD_1000', gold: 999_999_999 },
-    { productId: 'GOLD_1000', quantity: 100 },
+    { priceKrw: 100, productId: 'GOLD_1000' },
+    { priceKrw: 100, price: 1 },
+    { priceKrw: 100, amount: 1 },
+    { priceKrw: 100, goldAmount: 999_999_999 },
+    { priceKrw: 100, calculatedGold: 999_999_999 },
+    { priceKrw: 100, quantity: 100 },
+    { priceKrw: 100, rate: 9_999 },
   ])('rejects client-controlled price/gold fields: %j', async (body) => {
     const app = await application();
     await request(app.getHttpServer())
@@ -68,24 +75,31 @@ describe('PaymentsController security boundary', () => {
     await app.close();
   });
 
-  it('rejects an unknown product and passes only the catalog productId', async () => {
+  it.each([0, 1, 50, 99, 101, 250, 50_100, -100, 1.5, '100', 'NaN', Number.NaN])(
+    'rejects an invalid direct payment amount: %p',
+    async (priceKrw) => {
+      const app = await application();
+      await request(app.getHttpServer())
+        .post('/api/payments/orders')
+        .set('Cookie', 'session=value')
+        .set('Idempotency-Key', 'safe_idempotency_key_1001')
+        .send({ priceKrw })
+        .expect(400);
+      expect(payments.createOrder).not.toHaveBeenCalled();
+      await app.close();
+    },
+  );
+
+  it('passes only the requested priceKrw to the payment service', async () => {
     const app = await application();
     await request(app.getHttpServer())
       .post('/api/payments/orders')
       .set('Cookie', 'session=value')
-      .set('Idempotency-Key', 'safe_idempotency_key_1001')
-      .send({ productId: 'GOLD_UNKNOWN' })
-      .expect(400);
-    await request(app.getHttpServer())
-      .post('/api/payments/orders')
-      .set('Cookie', 'session=value')
       .set('Idempotency-Key', 'safe_idempotency_key_1002')
-      .send({ productId: 'GOLD_1000' })
+      .send({ priceKrw: 12_300 })
       .expect(201);
-    expect(payments.createOrder).toHaveBeenCalledWith('90000001', 'GOLD_1000', 'safe_idempotency_key_1002');
-    const body = payments.createOrder.mock.calls[0];
-    expect(JSON.stringify(body)).not.toContain('price');
-    expect(JSON.stringify(body)).not.toContain('gold');
+    expect(payments.createOrder).toHaveBeenCalledWith('90000001', 12_300, 'safe_idempotency_key_1002');
+    expect(payments.createOrder.mock.calls[0]).toEqual(['90000001', 12_300, 'safe_idempotency_key_1002']);
     await app.close();
   });
 

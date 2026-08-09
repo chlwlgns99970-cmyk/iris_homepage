@@ -124,10 +124,10 @@ Invoke-RestMethod http://localhost:3001/health
 - `CORS_ORIGINS`에는 허용할 웹 출처만 쉼표로 구분해 설정합니다.
 - `docker compose down`은 named volume을 보존하지만 `docker compose down -v`는 PostgreSQL과 Redis 볼륨을 삭제하므로 사용하지 마세요.
 - Redis에는 향후 임시 상태만 저장하고 결제·주문·지급의 최종 상태는 PostgreSQL에 저장해야 합니다.
-- 클라이언트 금액을 신뢰하지 않고, 가격 조회·주문번호 생성·결제 승인은 서버가 맡아야 합니다. 승인과 지급 상태를 분리하고 주문번호·결제키 중복 및 중복 지급을 차단하며 지급 재처리를 지원해야 합니다.
+- 클라이언트는 희망 결제 금액 `priceKrw`만 전달하며, 금액 범위·100원 단위·골드 계산·주문번호 생성·결제 승인은 서버가 맡습니다. 승인과 지급 상태를 분리하고 주문번호·결제키 중복 및 중복 지급을 차단하며 지급 재처리를 지원해야 합니다.
 - 골드 상점은 `/shop`, 본인 주문 내역은 `/payment/history`, 결과 화면은 `/payment/success`와 `/payment/fail`입니다.
 - 결제 공급자는 기본 `PAYMENT_PROVIDER=disabled`이며 실제 결제와 지급은 활성화하지 않았습니다. `mock` provider는 `NODE_ENV=test`에서만 허용되고 운영에서 설정하면 API가 시작을 거부합니다.
-- 서버 상품 정의만 가격의 단일 소스로 사용하며 공식 환율은 `1 KRW = 2,000 GOLD`입니다. 브라우저가 보낸 `price`, `amount`, `gold`, `quantity`는 ValidationPipe에서 거부됩니다.
+- 서버의 직접 금액 정책만 가격과 골드 계산의 단일 소스로 사용하며 공식 환율은 `1 KRW = 2,000 GOLD`, 허용 범위는 `100~50,000 KRW`, 단위는 `100 KRW`입니다. 신규 주문은 DB 호환용 `productId=GOLD_CUSTOM`을 서버에서 지정하고, 브라우저가 보낸 `productId`, `goldAmount`, `calculatedGold`, `price`, `amount`, `quantity`, `rate`는 ValidationPipe에서 거부됩니다.
 - 실제 PG 승인과 주문 금액 검증 전에는 봇 지급 API를 호출하지 않습니다. 지급 내부 API와 토큰은 포털 조회 API와 분리하고 루프백 주소만 허용합니다.
 - Iris URL/토큰이 없으므로 가상의 API나 함수로 연결하지 않았습니다.
 - 자동 seed가 없으므로 예시 데이터가 운영 공지나 랭킹으로 노출되지 않습니다.
@@ -261,7 +261,7 @@ TOSS_SECRET_KEY=
 
 로컬 Sandbox에서만 토스 Dashboard의 Payment Widget 테스트 client key(`test_gck_`)와 secret key(`test_gsk_`)를 입력하고 `PAYMENT_PROVIDER=toss`로 바꿀 수 있습니다. 공개 client key는 인증된 주문 생성 응답으로 브라우저에 전달되며 secret key는 NestJS에서만 사용합니다. 현재 단계에서는 `PAYMENT_FULFILLMENT_ENABLED=false`를 유지하므로 테스트 승인 주문은 `paid`에서 멈추고 실제 골드를 지급하지 않습니다. live key, 실제 사용자 결제, 운영 환경변수 입력, 운영 DB 마이그레이션 및 배포는 이 단계의 범위가 아닙니다.
 
-결제 성공 URL의 `paymentKey`, `orderId`, `amount`는 신뢰하지 않고 `POST /api/payments/confirm`으로 전달만 합니다. API는 로그인·소유권·DB 상품 금액·결제키 중복을 검증하고 토스 Confirm API의 `orderId`, `paymentKey`, `totalAmount`, `status`가 모두 일치할 때만 `paid`로 기록합니다. 주문 상태는 지급 활성화 후 `pending → paid → fulfilling → completed` 순서이며, 지급 오류는 `fulfilling`과 실패 코드에 남겨 동일 `orderId`로 안전하게 재처리합니다.
+결제 성공 URL의 `paymentKey`, `orderId`, `amount`는 신뢰하지 않고 `POST /api/payments/confirm`으로 전달만 합니다. API는 로그인·소유권·DB 주문 금액·서버 재계산 골드·결제키 중복을 검증하고 토스 Confirm API의 `orderId`, `paymentKey`, `totalAmount`, `status`가 모두 일치할 때만 `paid`로 기록합니다. 주문 상태는 지급 활성화 후 `pending → paid → fulfilling → completed` 순서이며, 지급 오류는 `fulfilling`과 실패 코드에 남겨 동일 `orderId`로 안전하게 재처리합니다.
 
 `POST /api/payments/webhooks/toss`는 `PAYMENT_STATUS_CHANGED` 형식만 받습니다. 일반 결제 상태 웹훅에는 별도 공유 secret을 임의로 만들지 않으며, 저장된 Toss 주문만 서버 secret으로 토스 결제 조회 API에 재조회해 주문번호·결제키·금액·상태를 동기화합니다. `orderId`, `providerPaymentKey`, `idempotencyKeyHash`는 각각 unique이고 동일 주문 골드 지급은 봇의 `payment.gold_fulfillment` operation ID로 다시 차단합니다. 취소 API adapter는 구현했지만 승인 결제 환불 관리자 UI와 자동 환불은 활성화하지 않았습니다.
 

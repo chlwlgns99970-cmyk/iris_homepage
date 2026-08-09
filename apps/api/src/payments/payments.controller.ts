@@ -97,7 +97,7 @@ export class PaymentsController {
     const botUid = await this.requireBotUid(cookie);
     await this.auth.enforceRateLimit('payment-create-ip', requestSubject(request), 20, 60);
     await this.auth.enforceRateLimit('payment-create-account', botUid, 10, 60);
-    return this.payments.createOrder(botUid, body.productId, idempotencyKey ?? '');
+    return this.payments.createOrder(botUid, body.priceKrw, idempotencyKey ?? '');
   }
 
   @Post('orders/:orderId/confirm')
