@@ -1,11 +1,21 @@
+const businessDefaults = {
+  name: '오리진 스튜디오',
+  owner: '최지훈',
+  registrationNumber: '779-08-03619',
+  ecommerceNumber: '2026-부천원미-1610호',
+  address: '경기도 부천시 원미구 신흥로53번길 32 401호',
+  phone: '010-8339-3380',
+  email: 'chlwlgns999@naver.com',
+} as const;
+
 export const businessInformation = [
-  ['상호', process.env.NEXT_PUBLIC_BUSINESS_NAME],
-  ['대표자', process.env.NEXT_PUBLIC_BUSINESS_REPRESENTATIVE],
-  ['사업자등록번호', process.env.NEXT_PUBLIC_BUSINESS_REGISTRATION_NUMBER],
-  ['통신판매업 신고번호', process.env.NEXT_PUBLIC_ECOMMERCE_REGISTRATION_NUMBER],
-  ['사업장 주소', process.env.NEXT_PUBLIC_BUSINESS_ADDRESS],
-  ['고객문의 연락처', process.env.NEXT_PUBLIC_CUSTOMER_SUPPORT_PHONE],
-  ['이메일', process.env.NEXT_PUBLIC_CUSTOMER_SUPPORT_EMAIL],
+  ['상호', process.env.NEXT_PUBLIC_BUSINESS_NAME?.trim() || businessDefaults.name],
+  ['대표자', process.env.NEXT_PUBLIC_BUSINESS_OWNER?.trim() || process.env.NEXT_PUBLIC_BUSINESS_REPRESENTATIVE?.trim() || businessDefaults.owner],
+  ['사업자등록번호', process.env.NEXT_PUBLIC_BUSINESS_REGISTRATION_NUMBER?.trim() || businessDefaults.registrationNumber],
+  ['통신판매업 신고번호', process.env.NEXT_PUBLIC_BUSINESS_ECOMMERCE_NUMBER?.trim() || process.env.NEXT_PUBLIC_ECOMMERCE_REGISTRATION_NUMBER?.trim() || businessDefaults.ecommerceNumber],
+  ['사업장 주소', process.env.NEXT_PUBLIC_BUSINESS_ADDRESS?.trim() || businessDefaults.address],
+  ['고객문의 연락처', process.env.NEXT_PUBLIC_BUSINESS_PHONE?.trim() || process.env.NEXT_PUBLIC_CUSTOMER_SUPPORT_PHONE?.trim() || businessDefaults.phone],
+  ['이메일', process.env.NEXT_PUBLIC_BUSINESS_EMAIL?.trim() || process.env.NEXT_PUBLIC_CUSTOMER_SUPPORT_EMAIL?.trim() || businessDefaults.email],
 ] as const;
 
 export const paymentLegalContent = {

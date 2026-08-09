@@ -406,8 +406,8 @@ function LegalAndBusiness() {
     </div>
     <div className="business-card">
       <h3>사업자 정보</h3>
-      <dl>{businessInformation.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value?.trim() || '정보 입력 전'}</dd></div>)}</dl>
-      <p>실제 값은 공개 환경변수로만 표시하며, 비밀번호·PG secret·관리자 키는 브라우저에 전달하지 않습니다.</p>
+      <dl>{businessInformation.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{label === '이메일' ? <a className="business-email" href={`mailto:${value}`}>{value}</a> : value}</dd></div>)}</dl>
+      <p>브라우저에는 공개 가능한 사업자 표시 정보만 제공하며, 비밀번호·PG secret·관리자 키는 전달하지 않습니다.</p>
     </div>
   </section>;
 }
