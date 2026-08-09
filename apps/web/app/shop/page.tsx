@@ -101,7 +101,12 @@ export default function GoldShopPage() {
   }
 
   async function purchase() {
-    if (!selected || !storefront?.enabled || !accepted || busy) return;
+    if (!selected || !storefront || busy) return;
+    if (!storefront.enabled) {
+      setMessage('현재 결제 시스템 준비 중입니다.');
+      return;
+    }
+    if (!accepted) return;
     setBusy(true);
     setMessage('');
     try {
@@ -188,16 +193,16 @@ export default function GoldShopPage() {
                 <small>{product.id}</small>
                 <h3>{formatNumber(product.goldAmount)} GOLD</h3>
                 <p>{formatNumber(product.priceKrw)}원</p>
-                {auth === 'guest' ? (
+                {storefront?.enabled && auth === 'guest' ? (
                   <Link className="gold-buy-button" href="/connect">웹 인증하기</Link>
                 ) : (
                   <button
                     className="gold-buy-button"
                     type="button"
-                    disabled={auth !== 'authenticated'}
+                    disabled={Boolean(storefront?.enabled && auth !== 'authenticated')}
                     onClick={(event) => openModal(product, event.currentTarget)}
                   >
-                    {storefront?.sandbox ? '테스트 결제' : storefront?.enabled ? '구매하기' : '상품 확인'}
+                    {storefront?.sandbox ? '테스트 결제' : '구매하기'}
                   </button>
                 )}
               </article>
@@ -229,10 +234,15 @@ export default function GoldShopPage() {
             {message && <p className="payment-error" role="alert">{message}</p>}
             <div className="payment-modal-actions">
               <button type="button" onClick={closeModal}>취소</button>
-              <button className="primary" type="button" disabled={!storefront?.enabled || !accepted || busy} onClick={purchase}>
+              <button
+                className="primary"
+                type="button"
+                disabled={busy || Boolean(storefront?.enabled && !accepted)}
+                onClick={purchase}
+              >
                 {storefront?.sandbox
                   ? `${formatNumber(selected.priceKrw)}원 테스트 결제`
-                  : storefront?.enabled ? `${formatNumber(selected.priceKrw)}원 결제하기` : '실결제 준비중'}
+                  : `${formatNumber(selected.priceKrw)}원 결제하기`}
               </button>
             </div>
           </section>
