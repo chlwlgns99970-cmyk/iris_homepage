@@ -100,7 +100,7 @@ export default function GoldShopPage() {
     [amountInput, storefront],
   );
   const validationMessage = inputFormatMessage || (amountValidation.valid ? '' : amountValidation.message);
-  const estimatedGold = amountValidation.valid && storefront
+  const estimatedGold = amountValidation.valid && !inputFormatMessage && storefront
     ? amountValidation.priceKrw * storefront.policy.goldPerKrw
     : 0;
 
@@ -122,7 +122,7 @@ export default function GoldShopPage() {
   }
 
   function openModal(button: HTMLButtonElement) {
-    if (!amountValidation.valid || !storefront) return;
+    if (!amountValidation.valid || inputFormatMessage || !storefront) return;
     openerRef.current = button;
     setAccepted(false);
     setMessage('');
@@ -281,7 +281,7 @@ export default function GoldShopPage() {
                 <button
                   className="gold-charge-submit"
                   type="button"
-                  disabled={auth !== 'authenticated' || !amountValidation.valid || !storefront}
+                  disabled={auth !== 'authenticated' || !amountValidation.valid || Boolean(inputFormatMessage) || !storefront}
                   onClick={(event) => openModal(event.currentTarget)}
                 >
                   구매 확인
