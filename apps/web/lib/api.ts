@@ -147,10 +147,21 @@ export type PortalArtwork = {
   owned: boolean;
 };
 
+export type PortalFortune =
+  | { active: false }
+  | {
+    active: true;
+    type: 'boss_damage' | 'tower_damage' | 'raid_damage' | 'exp_gain' | 'gold_gain' | 'chat_gold' | 'shop_discount';
+    name: string;
+    description: string;
+    expiresAt: string;
+  };
+
 export type PortalDashboard = {
   meta: { version: number; generatedAt: string };
   accountGender?: PortalCharacter['gender'];
   accountNickname?: string;
+  fortune?: PortalFortune;
   systems: PortalSystem[];
   characters?: PortalCharacter[];
   artworks?: PortalArtwork[];

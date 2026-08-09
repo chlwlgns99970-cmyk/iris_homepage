@@ -11,6 +11,7 @@ describe('portal response validation', () => {
       ...valid,
       accountGender: 'unknown',
       accountNickname: '',
+      fortune: { active: false },
     });
   });
 
@@ -25,6 +26,7 @@ describe('portal response validation', () => {
       ...valid,
       accountGender: 'unknown',
       accountNickname: '',
+      fortune: { active: false },
     });
     expect(parsed).not.toHaveProperty('uid');
     expect(parsed).not.toHaveProperty('accountKey');
@@ -33,6 +35,37 @@ describe('portal response validation', () => {
 
   it('rejects a raw malformed response', () => {
     expect(() => parsePortalDashboard({ users: {} })).toThrow('invalid response');
+  });
+
+  it.each([
+    'boss_damage', 'tower_damage', 'raid_damage', 'exp_gain',
+    'gold_gain', 'chat_gold', 'shop_discount',
+  ] as const)('accepts and sanitizes active fortune %s', (type) => {
+    const fortune = {
+      active: true,
+      type,
+      name: '오늘의 운세',
+      description: '효과 설명',
+      expiresAt: '2026-07-25T14:59:59.999Z',
+      uid: 'private',
+    };
+    expect(parsePortalDashboard({ ...valid, fortune }).fortune).toEqual({
+      active: true,
+      type,
+      name: '오늘의 운세',
+      description: '효과 설명',
+      expiresAt: '2026-07-25T14:59:59.999Z',
+    });
+  });
+
+  it('normalizes missing fortune and rejects malformed fortune', () => {
+    expect(parsePortalDashboard(valid).fortune).toEqual({ active: false });
+    expect(parsePortalDashboard({ ...valid, fortune: { active: false, uid: 'private' } }).fortune)
+      .toEqual({ active: false });
+    expect(() => parsePortalDashboard({
+      ...valid,
+      fortune: { active: true, type: 'private', name: 'x', description: 'x', expiresAt: valid.meta.generatedAt },
+    })).toThrow('invalid response');
   });
 
   it.each(['male', 'female', 'unknown'] as const)('accepts gender %s', (gender) => {

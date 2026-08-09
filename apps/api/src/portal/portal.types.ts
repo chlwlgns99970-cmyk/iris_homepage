@@ -15,15 +15,57 @@ export type PortalCharacter = {
 
 export type PortalGender = PortalCharacter['gender'];
 
+export type PortalFortune =
+  | { active: false }
+  | {
+    active: true;
+    type: 'boss_damage' | 'tower_damage' | 'raid_damage' | 'exp_gain' | 'gold_gain' | 'chat_gold' | 'shop_discount';
+    name: string;
+    description: string;
+    expiresAt: string;
+  };
+
 export type PortalDashboard = {
   meta: { version: number; generatedAt: string };
   accountGender: PortalGender;
   accountNickname: string;
+  fortune: PortalFortune;
   summary: [string, string, string?][];
   systems: unknown[];
   characters: PortalCharacter[];
   artworks: unknown[];
 };
+
+const fortuneTypes = new Set([
+  'boss_damage',
+  'tower_damage',
+  'raid_damage',
+  'exp_gain',
+  'gold_gain',
+  'chat_gold',
+  'shop_discount',
+]);
+
+function parsePortalFortune(value: unknown): PortalFortune {
+  if (value === undefined) return { active: false };
+  if (!value || typeof value !== 'object') throw new Error('invalid response');
+  const fortune = value as Record<string, unknown>;
+  if (fortune.active === false) return { active: false };
+  if (
+    fortune.active !== true
+    || typeof fortune.type !== 'string' || !fortuneTypes.has(fortune.type)
+    || typeof fortune.name !== 'string' || !fortune.name.trim() || fortune.name.length > 40
+    || typeof fortune.description !== 'string' || !fortune.description.trim() || fortune.description.length > 160
+    || typeof fortune.expiresAt !== 'string' || !Number.isFinite(Date.parse(fortune.expiresAt))
+  ) throw new Error('invalid response');
+  return {
+    active: true,
+    type: fortune.type as Extract<PortalFortune, { active: true }>['type'],
+    name: fortune.name,
+    description: fortune.description,
+    expiresAt: fortune.expiresAt,
+  };
+}
 
 const genderAliases: Record<string, PortalGender> = {
   male: 'male',
@@ -78,6 +120,7 @@ export function parsePortalDashboard(value: unknown): PortalDashboard {
     },
     accountGender: normalizePortalGender(data.accountGender),
     accountNickname: typeof data.accountNickname === 'string' ? data.accountNickname : '',
+    fortune: parsePortalFortune(data.fortune),
     summary: data.summary as PortalDashboard['summary'],
     systems: data.systems,
     characters,

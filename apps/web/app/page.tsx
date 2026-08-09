@@ -33,6 +33,7 @@ import {
   stableMobileSystems,
 } from '@/lib/mobile-system-menu';
 import { shouldRefreshDashboard } from '@/lib/dashboard-refresh';
+import { fortuneView } from '@/lib/fortune-display';
 import {
   AUTH_SESSION_BROWSER_NOTICE,
   AUTH_SESSION_PRIMARY_NOTICE,
@@ -353,6 +354,7 @@ function MobileDashboard({
             ))}
           </div>
         )}
+        {dashboard && <FortuneCard fortune={dashboard.fortune} compact />}
       </header>
 
       <div
@@ -544,6 +546,7 @@ function DashboardSection({ auth, state, selectedCharacter, selectedSystem, sele
           ))}
         </div>
       )}
+      {state.status === 'success' && <FortuneCard fortune={state.data.fortune} />}
       {auth.status !== 'authenticated' ? (
         <DashboardMessage title="개인 게임 데이터는 로그인 후 표시됩니다.">
           <span>{AUTH_SESSION_PRIMARY_NOTICE}<br />{AUTH_SESSION_BROWSER_NOTICE}</span>
@@ -580,6 +583,24 @@ function DashboardSection({ auth, state, selectedCharacter, selectedSystem, sele
         </div>
       )}
     </section>
+  );
+}
+
+function FortuneCard({ fortune, compact = false }: {
+  fortune: PortalDashboard['fortune'];
+  compact?: boolean;
+}) {
+  const view = fortuneView(fortune);
+  return (
+    <article className={`fortune-card ${view.active ? 'active' : 'pending'} ${compact ? 'compact' : ''}`} aria-label="오늘의 운세">
+      <span className="fortune-symbol" aria-hidden="true">🔮</span>
+      <div className="fortune-copy">
+        <small>{view.eyebrow}</small>
+        <strong>{view.title}</strong>
+        <p>{view.description}</p>
+      </div>
+      {view.expiry && <span className="fortune-expiry">{view.expiry}</span>}
+    </article>
   );
 }
 
