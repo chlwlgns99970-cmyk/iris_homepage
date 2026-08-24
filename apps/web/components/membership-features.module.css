@@ -1,0 +1,24 @@
+.profileFrame { position: relative; flex: 0 0 auto; display: grid; width: 74px; min-height: 90px; place-items: center; padding: 4px; border: 1px solid transparent; border-radius: 18px; }
+.profileFrame img { display: block; }
+.profileFrameActive { border-color: rgba(245,196,86,.78); background: linear-gradient(145deg,rgba(125,77,255,.4),rgba(225,64,215,.24)); box-shadow: 0 0 0 3px rgba(132,78,255,.17), 0 14px 34px rgba(91,55,187,.3); }
+.profileFrameActive:before { content: ""; position: absolute; inset: 3px; pointer-events: none; border: 1px solid rgba(255,233,164,.4); border-radius: 14px; }
+.memberBadge { position: absolute; right: -7px; bottom: -7px; padding: 4px 6px; border: 1px solid rgba(255,226,129,.5); border-radius: 999px; color: #ffe9a8; background: #3a246c; font-size: 8px; font-weight: 950; letter-spacing: .08em; }
+.rankingInsights { display: grid; gap: 15px; margin-top: 18px; padding: 20px; border: 1px solid rgba(201,161,255,.22); border-radius: 18px; background: linear-gradient(145deg,rgba(38,29,71,.72),rgba(12,16,33,.94)); }
+.rankingInsights small { display: block; color: #c397ff; font-size: 9px; font-weight: 900; letter-spacing: .14em; }
+.rankingInsights strong { display: block; margin-top: 4px; }
+.rankingInsights p { margin: 0; color: #aeb8ca; font-size: 12px; line-height: 1.65; }
+.rankingInsightsLocked { grid-template-columns: minmax(0,1fr) auto; align-items: center; }
+.rankingInsightsLocked p { grid-column: 1/-1; }
+.rankingInsightsLocked > span,.insightHeader > span { padding: 6px 9px; border-radius: 999px; color: #ffe2a1; background: rgba(229,168,52,.13); font-size: 10px; font-weight: 900; }
+.insightHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rankSummary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; margin: 0; }
+.rankSummary div { padding: 12px; border: 1px solid rgba(255,255,255,.07); border-radius: 12px; background: rgba(255,255,255,.035); }
+.rankSummary dt { color: #8f99aa; font-size: 10px; }
+.rankSummary dd { margin: 4px 0 0; color: #f2eaff; font-weight: 900; }
+.metricGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.metricGrid article { padding: 14px; border: 1px solid rgba(255,255,255,.07); border-radius: 13px; background: rgba(6,10,22,.45); }
+.metricGrid header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+.metricGrid header span { color: #c7b3f3; font-size: 11px; font-weight: 850; }
+.metricGrid header strong { margin: 0; font-size: 12px; }
+.metricGrid p + p { margin-top: 5px; }
+@media (max-width:600px) { .rankingInsights { padding: 16px; } .rankSummary,.metricGrid { grid-template-columns: 1fr; } .rankingInsightsLocked { grid-template-columns: 1fr; } }

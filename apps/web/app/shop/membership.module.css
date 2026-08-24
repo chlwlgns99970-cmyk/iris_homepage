@@ -18,6 +18,7 @@
 .price { display: flex; align-items: baseline; gap: 9px; margin: 34px 0 0; }
 .price strong { font-size: clamp(36px,4vw,48px); letter-spacing: -.045em; }
 .price span, .cardDescription, .paymentStatus { color: #aaa9bc; }
+.recurringLabel { display: block; margin-top: 6px; color: #e7d6ff; font-size: 13px; }
 .cardDescription { margin: 10px 0 28px; line-height: 1.65; }
 .cardBenefits { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .cardBenefits li { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px; min-height: 30px; color: #e8e5f0; font-size: 14px; }
@@ -26,6 +27,7 @@
 .accountBox { display: grid; gap: 5px; margin: 28px 0 14px; padding: 16px 18px; border: 1px solid rgba(255,255,255,.07); border-radius: 16px; background: rgba(4,7,18,.38); }
 .accountBox small { color: #9997ab; }
 .accountBox strong { overflow-wrap: anywhere; }
+.accountBox > span { color: #c7b5e8; font-size: 11px; }
 .accountBox a, .policyLinks a, .businessCard a { color: #c99bff; }
 .primaryCta { width: 100%; min-height: 52px; border: 0; border-radius: 15px; color: white; background: linear-gradient(100deg,#754bff,#df3ddb); font-size: 16px; font-weight: 850; cursor: pointer; box-shadow: 0 14px 34px rgba(132,62,255,.25); }
 .primaryCta:hover { filter: brightness(1.08); }
@@ -42,15 +44,32 @@
 .status { padding: 6px 9px; }
 .statusPreparing { color: #ffd7a6; background: rgba(232,151,48,.12); }
 .statusPlanned { color: #cbb3ff; background: rgba(133,85,255,.14); }
+.statusAvailable,.availableBadge { color: #bfffdc; background: rgba(39,194,123,.13); }
 .benefitCard h3 { margin: 20px 0 8px; font-size: 19px; }
 .benefitCard p, .benefitCard li { color: #aaaabb; line-height: 1.65; }
 .benefitCard p { margin: 0; font-size: 14px; }
 .benefitCard ul { display: grid; gap: 6px; margin: 18px 0 0; padding-left: 19px; font-size: 13px; }
+.guideGrid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+.guideGrid article { display: grid; gap: 7px; min-width: 0; padding: 20px; border: 1px solid rgba(255,255,255,.08); border-radius: 17px; background: rgba(14,18,35,.84); }
+.guideGrid small { color: #9692a8; font-size: 11px; }
+.guideGrid strong { line-height: 1.55; overflow-wrap: anywhere; }
+.disabledBillingNotice { margin: 14px 0 0; padding: 15px 18px; border: 1px solid rgba(239,182,95,.2); border-radius: 14px; color: #ffe2b1; background: rgba(210,139,43,.08); line-height: 1.65; }
+.readyFeatureGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }
+.readyFeatureCard { min-width: 0; padding: 27px; border: 1px solid rgba(191,159,255,.2); border-radius: 21px; background: linear-gradient(145deg,rgba(32,27,61,.9),rgba(11,15,30,.95)); }
+.availableBadge { display: inline-flex; padding: 6px 9px; border-radius: 999px; font-size: 11px; font-weight: 900; }
+.readyFeatureCard h3 { margin: 17px 0 8px; font-size: 21px; }
+.readyFeatureCard > p { margin: 0; color: #b3b0c1; line-height: 1.75; }
+.rankingPreview { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; margin-top: 22px; }
+.rankingPreview span { min-width: 0; padding: 12px 8px; border: 1px solid rgba(255,255,255,.07); border-radius: 11px; color: #d8c9f5; background: rgba(255,255,255,.035); text-align: center; font-size: 11px; overflow-wrap: anywhere; }
+.framePreview { display: flex; align-items: center; gap: 18px; margin-top: 20px; }
+.framePreview small { color: #9290a2; line-height: 1.5; }
 .comparison { overflow: hidden; border: 1px solid rgba(255,255,255,.09); border-radius: 20px; background: rgba(13,16,31,.84); }
 .comparisonRow { display: grid; grid-template-columns: minmax(240px,1.4fr) minmax(160px,.8fr) minmax(190px,.9fr); align-items: center; min-height: 64px; border-top: 1px solid rgba(255,255,255,.06); }
 .comparisonRow > * { min-width: 0; padding: 16px 22px; overflow-wrap: anywhere; }
 .comparisonRow > :nth-child(3) { color: #d4bbff; background: rgba(120,72,255,.07); }
 .comparisonHead { border-top: 0; color: #c7c4d4; background: rgba(255,255,255,.035); font-size: 13px; font-weight: 800; }
+.refundCard { padding: 26px; border: 1px solid rgba(255,255,255,.08); border-radius: 20px; background: rgba(14,18,34,.85); }
+.refundCard ul { display: grid; gap: 12px; margin: 0; padding-left: 22px; color: #b5b2c3; line-height: 1.75; }
 .policySection { display: grid; grid-template-columns: minmax(0,1fr) minmax(360px,.8fr); gap: 44px; padding: 76px 0 110px; }
 .policySection > div > p:not(.eyebrow) { max-width: 650px; color: #a7a6b6; line-height: 1.8; }
 .policyLinks { position: static; display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; padding: 0; border: 0; background: transparent; }
@@ -61,13 +80,14 @@
 .businessCard dl > div { display: grid; grid-template-columns: 122px minmax(0,1fr); gap: 10px; font-size: 13px; }
 .businessCard dt { color: #8f8da0; }
 .businessCard dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
-@media (max-width:900px) { .hero { grid-template-columns: 1fr; gap: 40px; min-height: auto; padding: 64px 0; } .benefitGrid { grid-template-columns: repeat(2,minmax(0,1fr)); } .policySection { grid-template-columns: 1fr; } }
+@media (max-width:900px) { .hero { grid-template-columns: 1fr; gap: 40px; min-height: auto; padding: 64px 0; } .benefitGrid { grid-template-columns: repeat(2,minmax(0,1fr)); } .guideGrid { grid-template-columns: repeat(2,minmax(0,1fr)); } .policySection { grid-template-columns: 1fr; } }
 @media (max-width:600px) {
   .hero, .section, .policySection { width: calc(100% - 32px); }
   .hero { gap: 30px; padding: 46px 0 36px; } .heroCopy h1 { font-size: 42px; } .heroLead { font-size: 17px; }
   .membershipCard { padding: 24px 20px; border-radius: 22px; } .cardHeader { grid-template-columns: auto 1fr; } .preparingBadge { grid-column: 1/-1; justify-self: start; }
   .cardBenefits li { grid-template-columns: 20px 1fr; } .cardBenefits small { grid-column: 2; }
-  .section { padding: 50px 0; } .sectionHeader { display: grid; gap: 14px; } .sectionHeader h2, .policySection h2 { font-size: 28px; } .benefitGrid { grid-template-columns: 1fr; }
+  .section { padding: 50px 0; } .sectionHeader { display: grid; gap: 14px; } .sectionHeader h2, .policySection h2 { font-size: 28px; } .benefitGrid,.guideGrid,.readyFeatureGrid { grid-template-columns: 1fr; }
+  .readyFeatureCard,.refundCard { padding: 20px; } .rankingPreview { grid-template-columns: 1fr; }
   .comparison { border: 0; border-radius: 0; background: transparent; } .comparisonHead { display: none; }
   .comparisonRow:not(.comparisonHead) { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 15px; background: rgba(15,18,34,.9); }
   .comparisonRow:not(.comparisonHead) > strong { grid-column: 1/-1; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.06); }

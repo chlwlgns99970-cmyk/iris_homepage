@@ -40,6 +40,9 @@ import {
   AUTH_SESSION_PRIMARY_NOTICE,
 } from '@/lib/auth-session-policy';
 import { SiteFooter } from '@/components/site-footer';
+import { MembershipProfileFrame } from '@/components/membership-profile-frame';
+import { MembershipRankingInsights } from '@/components/membership-ranking-insights';
+import { resolveMembershipEntitlement, shouldUseMembershipProfileFrame } from '@/lib/membership-features';
 
 type AuthState =
   | { status: 'loading' | 'guest' }
@@ -251,7 +254,7 @@ function Header({ auth, menuOpen, closeMenu, toggleMenu, signOut, selectMobileTa
         <a href="#characters" onClick={(event) => navigate(event, 'characters')}>내 캐릭터</a>
         <a href="#gallery" onClick={(event) => navigate(event, 'characters')}>일러스트</a>
         <a href="#ranking" onClick={(event) => navigate(event, 'rankings')}>랭킹</a>
-        <Link href="/shop" onClick={closeMenu}>오리진 멤버십</Link>
+        <Link href="/membership" onClick={closeMenu}>오리진 멤버십</Link>
       </nav>
       {auth.status === 'authenticated' ? (
         <div className="account-cluster">
@@ -743,6 +746,7 @@ function CharacterSection({ state, selected, select, mobile = false }: {
   );
   const accountGender = resolveAccountGender(characters);
   const selectedData = characters.find((character) => character.job === selected);
+  const membership = resolveMembershipEntitlement(state.status === 'success' ? state.data : undefined);
   return (
     <section className={`character-section ${mobile ? 'mobile-character-section' : ''}`} id={mobile ? undefined : 'characters'}>
       <SectionHeading eyebrow="MY CHARACTER SLOTS" title="내 캐릭터 슬롯" description="직업별 기본 외형과 실제 슬롯 데이터를 확인합니다.">
@@ -765,7 +769,7 @@ function CharacterSection({ state, selected, select, mobile = false }: {
           );
         })}
       </div>
-      <SelectedCharacter selected={selected} character={selectedData} accountGender={accountGender} accountNickname={accountNickname} />
+      <SelectedCharacter selected={selected} character={selectedData} accountGender={accountGender} accountNickname={accountNickname} membershipActive={shouldUseMembershipProfileFrame(membership)} />
     </section>
   );
 }
@@ -785,11 +789,12 @@ function characterJobLevel(character?: PortalCharacter) {
   return [visual.label, character.level].filter(Boolean).join(' · ');
 }
 
-function SelectedCharacter({ selected, character, accountGender, accountNickname }: {
+function SelectedCharacter({ selected, character, accountGender, accountNickname, membershipActive }: {
   selected: string;
   character?: PortalCharacter;
   accountGender: PortalCharacter['gender'];
   accountNickname: string;
+  membershipActive: boolean;
 }) {
   const key = selected in characterVisuals ? selected as keyof typeof characterVisuals : 'warrior';
   const visual = characterVisuals[key];
@@ -800,7 +805,7 @@ function SelectedCharacter({ selected, character, accountGender, accountNickname
   ].filter((item): item is [string, string] => Boolean(item[1]));
   return (
     <article className="selected-dashboard">
-      <div className="selected-profile"><Image src={resolveCharacterImage(key, resolveEffectiveGender(character?.gender, accountGender), 'profile')} alt={`${visual.label} 프로필`} width={66} height={66} /><div><small>{character && !displayFallback ? '선택 캐릭터' : '기본 직업 소개'}</small><h3>{character ? characterDisplayName(character) : defaultCharacterName(key, accountNickname)}</h3><p>{displayFallback ? '저장된 설정 없이 화면 기본 외형만 표시합니다.' : character?.title ?? '게임 데이터 연결 시 상세정보가 표시됩니다.'}</p></div></div>
+      <div className="selected-profile"><MembershipProfileFrame src={resolveCharacterImage(key, resolveEffectiveGender(character?.gender, accountGender), 'profile')} alt={`${visual.label} 프로필`} active={membershipActive} /><div><small>{membershipActive ? '오리진 멤버십 캐릭터' : character && !displayFallback ? '선택 캐릭터' : '기본 직업 소개'}</small><h3>{character ? characterDisplayName(character) : defaultCharacterName(key, accountNickname)}</h3><p>{displayFallback ? '저장된 설정 없이 화면 기본 외형만 표시합니다.' : character?.title ?? '게임 데이터 연결 시 상세정보가 표시됩니다.'}</p></div></div>
       <div className="selected-stats">{facts.map(([label, value]) => <div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
     </article>
   );
@@ -865,6 +870,7 @@ function RankingSection({ state, mobile = false }: { state: DashboardState; mobi
   const podium = rows.slice(0, 3);
   const ordered = podium.length === 3 ? [podium[1], podium[0], podium[2]] : podium;
   const hallOfFame = rankings?.hallOfFame ?? [];
+  const membership = resolveMembershipEntitlement(state.status === 'success' ? state.data : undefined);
 
   return (
     <section className={`section ${mobile ? 'mobile-ranking-section' : ''}`} id={mobile ? undefined : 'ranking'}>
@@ -888,12 +894,12 @@ function RankingSection({ state, mobile = false }: { state: DashboardState; mobi
       )}
       {state.status === 'success' && group === 'overall' && (
         activeOverall
-          ? <RankingRows category={activeOverall} tabs={overall} select={(id) => setOverallId(id)} ordered={ordered} />
+          ? <RankingRows category={activeOverall} tabs={overall} select={(id) => setOverallId(id)} ordered={ordered} rankings={rankings} membershipActive={membership.active} />
           : <RankingMessage title="등록된 종합 랭킹 정보가 없습니다." />
       )}
       {state.status === 'success' && group === 'byJob' && (
         activeJob
-          ? <RankingRows category={activeJob} tabs={byJob} select={(id) => setJobId(id as typeof jobId)} ordered={ordered} />
+          ? <RankingRows category={activeJob} tabs={byJob} select={(id) => setJobId(id as typeof jobId)} ordered={ordered} rankings={rankings} membershipActive={membership.active} />
           : <RankingMessage title="등록된 직업별 랭킹 정보가 없습니다." />
       )}
       {state.status === 'success' && group === 'hallOfFame' && (
@@ -925,11 +931,13 @@ function jobRankingCategories(rankings?: PortalRankings): PortalRankingCategory[
   });
 }
 
-function RankingRows({ category, tabs, select, ordered }: {
+function RankingRows({ category, tabs, select, ordered, rankings, membershipActive }: {
   category: PortalRankingCategory;
   tabs: PortalRankingCategory[];
   select: (id: PortalRankingCategory['id']) => void;
   ordered: PortalRankingRow[];
+  rankings?: PortalRankings;
+  membershipActive: boolean;
 }) {
   const mine = category.rows.find((row) => row.current);
   return <>
@@ -947,6 +955,7 @@ function RankingRows({ category, tabs, select, ordered }: {
       {category.rows.map((row) => <tr className={row.current ? 'current-rank' : ''} key={`${category.id}-${row.rank}-${row.nickname}`}><td className="rank">{row.rank}</td><td><b>{row.nickname}</b></td><td>{row.job}</td><td>{row.value}</td></tr>)}
     </tbody></table></div>
     <p className="my-ranking">{mine ? `내 순위: ${mine.rank}위` : '내 순위: 랭킹 기록 없음'}</p>
+    <MembershipRankingInsights rankings={rankings} active={membershipActive} />
   </>;
 }
 

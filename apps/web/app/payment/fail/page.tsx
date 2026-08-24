@@ -23,13 +23,13 @@ function PaymentFailResult() {
 
 function PaymentFailContent({ message }: { message: string }) {
   return <>
-    <header className="topbar shop-topbar"><Link className="brand" href="/"><span className="brand-logo">N</span><span><b>나테베 RPG</b><small>PAYMENT</small></span></Link><Link className="account-button" href="/shop">멤버십으로</Link></header>
+    <header className="topbar shop-topbar"><Link className="brand" href="/"><span className="brand-logo">N</span><span><b>나테베 RPG</b><small>PAYMENT</small></span></Link><Link className="account-button" href="/membership">멤버십으로</Link></header>
     <main className="payment-page">
       <section className="payment-page-card payment-result-card">
         <p className="eyebrow">PAYMENT NOT COMPLETED</p>
         <h1>결제가 완료되지 않았습니다.</h1>
         <div className="payment-state">{message}<br />Sandbox 단계에서는 실제 금액이 청구되지 않습니다.</div>
-        <div className="payment-page-actions"><Link className="button glass" href="/payment/history">결제 내역</Link><Link className="button primary" href="/shop">오리진 멤버십으로 돌아가기</Link></div>
+        <div className="payment-page-actions"><Link className="button glass" href="/payment/history">결제 내역</Link><Link className="button primary" href="/membership">오리진 멤버십으로 돌아가기</Link></div>
       </section>
     </main>
     <SiteFooter />

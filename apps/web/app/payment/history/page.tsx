@@ -39,19 +39,19 @@ export default function PaymentHistoryPage() {
     <main className="payment-page">
       <section className="payment-page-card payment-history-card">
         <p className="eyebrow">MY ORDERS</p>
-        <h1>결제 내역</h1>
-        <p>로그인한 계정의 주문만 표시됩니다.</p>
+        <h1>멤버십 결제 내역</h1>
+        <p>로그인한 계정의 결제 기록만 표시됩니다.</p>
         {state === 'loading' && <div className="payment-state">결제 내역을 불러오는 중입니다.</div>}
         {state === 'guest' && <div className="payment-state"><b>웹 인증이 필요합니다.</b><Link className="button primary" href="/connect">웹 인증하기</Link></div>}
         {state === 'error' && <div className="payment-state">결제 내역을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</div>}
         {state === 'ready' && orders.length === 0 && <div className="payment-state">아직 결제 내역이 없습니다.</div>}
         {state === 'ready' && orders.length > 0 && <div className="payment-history-list">
           {orders.map((order) => <article key={order.orderId}>
-            <div><time dateTime={order.createdAt}>{formatDate(order.createdAt)}</time><h2>{formatNumber(order.goldAmount)} GOLD</h2><p>{formatNumber(order.priceKrw)}원</p></div>
+            <div><time dateTime={order.createdAt}>{formatDate(order.createdAt)}</time><h2>{order.productName || '결제 상품'}</h2><p>{formatNumber(order.priceKrw)}원</p></div>
             <span className={`payment-status ${order.status}`}>{statusLabels[order.status]}</span>
           </article>)}
         </div>}
-        <div className="payment-page-actions"><Link className="button glass" href="/">게임 대시보드</Link><Link className="button primary" href="/shop">오리진 멤버십</Link></div>
+        <div className="payment-page-actions"><Link className="button glass" href="/">게임 대시보드</Link><Link className="button primary" href="/membership">오리진 멤버십</Link></div>
       </section>
     </main>
     <SiteFooter />
@@ -59,7 +59,7 @@ export default function PaymentHistoryPage() {
 }
 
 function PaymentHeader() {
-  return <header className="topbar shop-topbar"><Link className="brand" href="/"><span className="brand-logo">N</span><span><b>나테베 RPG</b><small>PAYMENT HISTORY</small></span></Link><nav><Link href="/">홈</Link><Link href="/shop">오리진 멤버십</Link></nav><Link className="account-button" href="/shop">멤버십으로</Link></header>;
+  return <header className="topbar shop-topbar"><Link className="brand" href="/"><span className="brand-logo">N</span><span><b>나테베 RPG</b><small>PAYMENT HISTORY</small></span></Link><nav><Link href="/">홈</Link><Link href="/membership">오리진 멤버십</Link></nav><Link className="account-button" href="/membership">멤버십으로</Link></header>;
 }
 
 function formatNumber(value: number) { return new Intl.NumberFormat('ko-KR').format(value); }
