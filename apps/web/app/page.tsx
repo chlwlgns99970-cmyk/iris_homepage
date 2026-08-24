@@ -251,7 +251,7 @@ function Header({ auth, menuOpen, closeMenu, toggleMenu, signOut, selectMobileTa
         <a href="#characters" onClick={(event) => navigate(event, 'characters')}>내 캐릭터</a>
         <a href="#gallery" onClick={(event) => navigate(event, 'characters')}>일러스트</a>
         <a href="#ranking" onClick={(event) => navigate(event, 'rankings')}>랭킹</a>
-        <Link href="/shop" onClick={closeMenu}>골드 상점</Link>
+        <Link href="/shop" onClick={closeMenu}>오리진 멤버십</Link>
       </nav>
       {auth.status === 'authenticated' ? (
         <div className="account-cluster">

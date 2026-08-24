@@ -19,7 +19,7 @@ export function SiteFooter({ className = '', compact = false, showSectionLinks =
         <Link href="/#characters">내 캐릭터</Link>
         <Link href="/#gallery">일러스트</Link>
         <Link href="/#ranking">랭킹</Link>
-        <Link href="/shop">골드 상점</Link>
+        <Link href="/shop">오리진 멤버십</Link>
       </>}
       <Link className="footer-legal-link" href="/privacy">개인정보처리방침</Link>
       <span className="footer-link-divider" aria-hidden="true">|</span>

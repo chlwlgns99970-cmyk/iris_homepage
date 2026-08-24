@@ -51,7 +51,7 @@ export default function PaymentHistoryPage() {
             <span className={`payment-status ${order.status}`}>{statusLabels[order.status]}</span>
           </article>)}
         </div>}
-        <div className="payment-page-actions"><Link className="button glass" href="/">게임 대시보드</Link><Link className="button primary" href="/shop">골드 상점</Link></div>
+        <div className="payment-page-actions"><Link className="button glass" href="/">게임 대시보드</Link><Link className="button primary" href="/shop">오리진 멤버십</Link></div>
       </section>
     </main>
     <SiteFooter />
@@ -59,7 +59,7 @@ export default function PaymentHistoryPage() {
 }
 
 function PaymentHeader() {
-  return <header className="topbar shop-topbar"><Link className="brand" href="/"><span className="brand-logo">N</span><span><b>나테베 RPG</b><small>PAYMENT HISTORY</small></span></Link><nav><Link href="/">홈</Link><Link href="/shop">골드 상점</Link></nav><Link className="account-button" href="/shop">상점으로</Link></header>;
+  return <header className="topbar shop-topbar"><Link className="brand" href="/"><span className="brand-logo">N</span><span><b>나테베 RPG</b><small>PAYMENT HISTORY</small></span></Link><nav><Link href="/">홈</Link><Link href="/shop">오리진 멤버십</Link></nav><Link className="account-button" href="/shop">멤버십으로</Link></header>;
 }
 
 function formatNumber(value: number) { return new Intl.NumberFormat('ko-KR').format(value); }
