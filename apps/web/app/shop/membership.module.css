@@ -4,6 +4,7 @@
 .eyebrow { margin: 0 0 12px; color: #c39cff; font-size: 12px; font-weight: 800; letter-spacing: .18em; }
 .heroCopy h1 { margin: 0; font-size: clamp(42px,5vw,72px); line-height: 1.05; letter-spacing: -.055em; }
 .heroLead { max-width: 610px; margin: 26px 0 0; color: #c5c5d7; font-size: clamp(18px,2vw,23px); line-height: 1.75; }
+.productType { display: block; margin-top: 18px; color: #eadfff; font-size: clamp(18px,2.2vw,27px); line-height: 1.4; }
 .heroTags { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 32px; }
 .heroTags span { padding: 9px 14px; border: 1px solid rgba(193,160,255,.25); border-radius: 999px; color: #d9d0ed; background: rgba(18,22,41,.72); font-size: 13px; }
 .membershipCard { position: relative; isolation: isolate; overflow: hidden; padding: 38px; border: 1px solid rgba(197,158,255,.28); border-radius: 30px; background: linear-gradient(145deg,rgba(25,29,55,.98),rgba(10,13,30,.98)); box-shadow: 0 30px 90px rgba(0,0,0,.4), 0 0 80px rgba(132,73,255,.12); }
@@ -54,6 +55,10 @@
 .guideGrid small { color: #9692a8; font-size: 11px; }
 .guideGrid strong { line-height: 1.55; overflow-wrap: anywhere; }
 .disabledBillingNotice { margin: 14px 0 0; padding: 15px 18px; border: 1px solid rgba(239,182,95,.2); border-radius: 14px; color: #ffe2b1; background: rgba(210,139,43,.08); line-height: 1.65; }
+.serviceTimingCard { padding: 26px; border: 1px solid rgba(191,159,255,.2); border-radius: 20px; background: linear-gradient(145deg,rgba(32,27,61,.82),rgba(11,15,30,.94)); }
+.serviceTimingCard strong { display: block; color: #e7d6ff; font-size: 20px; }
+.serviceTimingCard p { margin: 10px 0 0; color: #c1bdce; line-height: 1.75; }
+.serviceTimingCard small { display: block; margin-top: 10px; color: #9692a8; line-height: 1.65; }
 .readyFeatureGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }
 .readyFeatureCard { min-width: 0; padding: 27px; border: 1px solid rgba(191,159,255,.2); border-radius: 21px; background: linear-gradient(145deg,rgba(32,27,61,.9),rgba(11,15,30,.95)); }
 .availableBadge { display: inline-flex; padding: 6px 9px; border-radius: 999px; font-size: 11px; font-weight: 900; }
@@ -70,6 +75,11 @@
 .comparisonHead { border-top: 0; color: #c7c4d4; background: rgba(255,255,255,.035); font-size: 13px; font-weight: 800; }
 .refundCard { padding: 26px; border: 1px solid rgba(255,255,255,.08); border-radius: 20px; background: rgba(14,18,34,.85); }
 .refundCard ul { display: grid; gap: 12px; margin: 0; padding-left: 22px; color: #b5b2c3; line-height: 1.75; }
+.refundCard a,.customerServiceCard a { color: #c99bff; overflow-wrap: anywhere; }
+.customerServiceCard { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; padding: 22px; border: 1px solid rgba(255,255,255,.08); border-radius: 20px; background: rgba(14,18,34,.85); }
+.customerServiceCard div { display: grid; min-width: 0; gap: 7px; padding: 18px; border: 1px solid rgba(255,255,255,.07); border-radius: 15px; background: rgba(255,255,255,.025); }
+.customerServiceCard small { color: #9692a8; }
+.customerServiceCard strong,.customerServiceCard a { font-size: 16px; line-height: 1.5; }
 .policySection { display: grid; grid-template-columns: minmax(0,1fr) minmax(360px,.8fr); gap: 44px; padding: 76px 0 110px; }
 .policySection > div > p:not(.eyebrow) { max-width: 650px; color: #a7a6b6; line-height: 1.8; }
 .policyLinks { position: static; display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; padding: 0; border: 0; background: transparent; }
@@ -87,7 +97,8 @@
   .membershipCard { padding: 24px 20px; border-radius: 22px; } .cardHeader { grid-template-columns: auto 1fr; } .preparingBadge { grid-column: 1/-1; justify-self: start; }
   .cardBenefits li { grid-template-columns: 20px 1fr; } .cardBenefits small { grid-column: 2; }
   .section { padding: 50px 0; } .sectionHeader { display: grid; gap: 14px; } .sectionHeader h2, .policySection h2 { font-size: 28px; } .benefitGrid,.guideGrid,.readyFeatureGrid { grid-template-columns: 1fr; }
-  .readyFeatureCard,.refundCard { padding: 20px; } .rankingPreview { grid-template-columns: 1fr; }
+  .readyFeatureCard,.refundCard,.serviceTimingCard { padding: 20px; } .rankingPreview { grid-template-columns: 1fr; }
+  .customerServiceCard { grid-template-columns: 1fr; padding: 16px; } .customerServiceCard div { padding: 15px; }
   .comparison { border: 0; border-radius: 0; background: transparent; } .comparisonHead { display: none; }
   .comparisonRow:not(.comparisonHead) { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 15px; background: rgba(15,18,34,.9); }
   .comparisonRow:not(.comparisonHead) > strong { grid-column: 1/-1; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.06); }

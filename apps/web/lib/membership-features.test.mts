@@ -7,6 +7,7 @@ import {
   resolveMembershipEntitlement,
   shouldUseMembershipProfileFrame,
 } from './membership-features.ts';
+import { MEMBERSHIP_BENEFITS, MEMBERSHIP_COMPARISON } from './membership.ts';
 
 const dashboard = {
   meta: { version: 1, generatedAt: '2026-08-24T00:00:00.000Z' },
@@ -59,4 +60,13 @@ test('ranking comparison returns null without an authenticated current ranking r
   assert.equal(buildMembershipRankingComparison({
     categories: [{ id: 'power', label: '전투력', rows: [{ rank: 1, nickname: '모험가', job: '전사', value: '100', current: false }] }],
   }), null);
+});
+
+test('membership benefit statuses use only the PG review vocabulary', () => {
+  const allowed = new Set(['이용 가능', '준비 중', '순차 제공 예정']);
+  for (const benefit of MEMBERSHIP_BENEFITS) {
+    assert.equal(allowed.has(benefit.availability), true, benefit.title);
+  }
+  assert.equal(MEMBERSHIP_COMPARISON.some((row) => row.membership === '확장 제공 예정'), false);
+  assert.equal(MEMBERSHIP_COMPARISON.some((row) => row.membership === '제공 예정'), false);
 });

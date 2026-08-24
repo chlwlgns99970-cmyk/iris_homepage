@@ -10,7 +10,7 @@ export default function TermsPage() {
   return <>
     <header className="topbar shop-topbar legal-topbar">
       <Link className="brand" href="/"><span className="brand-logo">N</span><span><b>나테베 RPG</b><small>TERMS OF USE</small></span></Link>
-      <nav><Link href="/">홈</Link><Link href="/membership">오리진 멤버십</Link></nav>
+      <nav><Link href="/">홈</Link><Link href="/membership">멤버십</Link></nav>
       <Link className="account-button" href="/">홈으로</Link>
     </header>
     <main className="legal-page">

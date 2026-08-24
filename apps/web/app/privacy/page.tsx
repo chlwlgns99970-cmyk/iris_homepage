@@ -90,7 +90,7 @@ export default function PrivacyPolicyPage() {
 function LegalHeader({ label }: { label: string }) {
   return <header className="topbar shop-topbar legal-topbar">
     <Link className="brand" href="/"><span className="brand-logo">N</span><span><b>나테베 RPG</b><small>{label}</small></span></Link>
-    <nav><Link href="/">홈</Link><Link href="/membership">오리진 멤버십</Link></nav>
+    <nav><Link href="/">홈</Link><Link href="/membership">멤버십</Link></nav>
     <Link className="account-button" href="/">홈으로</Link>
   </header>;
 }
