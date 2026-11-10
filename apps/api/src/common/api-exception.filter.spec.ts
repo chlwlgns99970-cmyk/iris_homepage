@@ -48,7 +48,8 @@ describe('ApiExceptionFilter', () => {
     });
     expect(logOutput).toContain('request-500');
     expect(logOutput).toContain('/connect');
-    expect(logOutput).toContain('database failed');
+    expect(logOutput).toContain('exceptionName');
+    expect(logOutput).not.toContain('database failed');
     expect(logOutput).not.toContain('token');
     expect(logOutput).not.toContain('SECRET_TOKEN');
     expect(logOutput).not.toContain('paymentKey');

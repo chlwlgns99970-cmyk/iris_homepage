@@ -6,6 +6,10 @@ import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import {
   ApiError,
   getCurrentAuth,
+  getNotices,
+  getNotice,
+  type NoticeSummary,
+  type Notice,
   getPortalDashboard,
   logout,
   type PortalCharacter,
@@ -34,7 +38,9 @@ import {
 } from '@/lib/mobile-system-menu';
 import { shouldRefreshDashboard } from '@/lib/dashboard-refresh';
 import { fortuneView } from '@/lib/fortune-display';
+import { anniversaryView } from '@/lib/anniversary-display';
 import { equipmentRenameView } from '@/lib/equipment-rename-display';
+import { palaceLawView } from '@/lib/palace-law-display';
 import {
   AUTH_SESSION_BROWSER_NOTICE,
   AUTH_SESSION_PRIMARY_NOTICE,
@@ -45,7 +51,7 @@ import { MembershipRankingInsights } from '@/components/membership-ranking-insig
 import { resolveMembershipEntitlement, shouldUseMembershipProfileFrame } from '@/lib/membership-features';
 
 type AuthState =
-  | { status: 'loading' | 'guest' }
+  | { status: 'loading' | 'guest' | 'error' }
   | { status: 'authenticated'; botUid: string };
 type DashboardState =
   | { status: 'idle' | 'loading' | 'unconfigured' | 'not-found' | 'error' }
@@ -94,7 +100,7 @@ export default function Home() {
           : { status: 'guest' });
       })
       .catch(() => {
-        if (active) setAuth({ status: 'guest' });
+        if (active) { setAuth({ status: 'error' }); setDashboard({status:'error'}); }
       });
     return () => { active = false; };
   }, []);
@@ -189,6 +195,7 @@ export default function Home() {
         selectMobileTab={setMobileTab}
       />
       <main id="home">
+        {auth.status === 'error' && <p className="policy-box" role="alert">로그인 서버에 연결하지 못했습니다. 계정이 없다는 뜻은 아닙니다. 잠시 후 다시 확인해 주세요.</p>}
         <div className="desktop-home">
           <WorldHero authenticated={auth.status === 'authenticated'} />
           <DashboardSection
@@ -205,6 +212,7 @@ export default function Home() {
           />
           <GallerySection state={dashboard} />
           <PremiumSection />
+          <NoticesSection />
           <RankingSection state={dashboard} />
         </div>
         <MobileDashboard
@@ -359,6 +367,7 @@ function MobileDashboard({
           </div>
         )}
         {dashboard && <FortuneCard fortune={dashboard.fortune} compact />}
+        {dashboard && <AnniversaryCard anniversary={dashboard.anniversary} birthday={dashboard.birthday} compact />}
       </header>
 
       <div
@@ -395,6 +404,7 @@ function MobileDashboard({
             selectSystem={selectSystem}
             generatedAt={state.data.meta.generatedAt}
             characterContext={`${characterDisplayName(currentCharacter)} · ${characterJobLevel(currentCharacter)}`}
+            palaceLaw={state.data.palaceLaw}
           />
         ) : activeTab === 'growth' ? (
           <>
@@ -409,6 +419,7 @@ function MobileDashboard({
               selectSystem={selectSystem}
               generatedAt={state.data.meta.generatedAt}
               characterContext={`${characterDisplayName(currentCharacter)} · ${characterJobLevel(currentCharacter)}`}
+              palaceLaw={state.data.palaceLaw}
             />
           </>
         ) : (
@@ -422,12 +433,13 @@ function MobileDashboard({
   );
 }
 
-function MobileSystemGroup({ systems, selectedSystem, selectSystem, generatedAt, characterContext }: {
+function MobileSystemGroup({ systems, selectedSystem, selectSystem, generatedAt, characterContext, palaceLaw }: {
   systems: PortalSystem[];
   selectedSystem: string;
   selectSystem: (id: string) => void;
   generatedAt: string;
   characterContext: string;
+  palaceLaw: PortalDashboard['palaceLaw'];
 }) {
   const active = systems.find((system) => system.id === selectedSystem) ?? systems[0];
   if (!active) {
@@ -448,7 +460,7 @@ function MobileSystemGroup({ systems, selectedSystem, selectSystem, generatedAt,
           </button>
         ))}
       </div>
-      <SystemPanel system={active} generatedAt={generatedAt} characterContext={characterContext} />
+      <SystemPanel system={active} generatedAt={generatedAt} characterContext={characterContext} palaceLaw={palaceLaw} />
     </div>
   );
 }
@@ -506,6 +518,7 @@ function DashboardSection({ auth, state, selectedCharacter, selectedSystem, sele
 }) {
   const systems = state.status === 'success' ? state.data.systems : [];
   const generatedAt = state.status === 'success' ? state.data.meta.generatedAt : '';
+  const palaceLaw = state.status === 'success' ? state.data.palaceLaw : undefined;
   const accountNickname = state.status === 'success'
     ? resolvePortalNickname(state.data)
     : '';
@@ -551,6 +564,7 @@ function DashboardSection({ auth, state, selectedCharacter, selectedSystem, sele
         </div>
       )}
       {state.status === 'success' && <FortuneCard fortune={state.data.fortune} />}
+      {state.status === 'success' && <AnniversaryCard anniversary={state.data.anniversary} birthday={state.data.birthday} />}
       {auth.status !== 'authenticated' ? (
         <DashboardMessage title="개인 게임 데이터는 로그인 후 표시됩니다.">
           <span>{AUTH_SESSION_PRIMARY_NOTICE}<br />{AUTH_SESSION_BROWSER_NOTICE}</span>
@@ -583,7 +597,7 @@ function DashboardSection({ auth, state, selectedCharacter, selectedSystem, sele
               ))}
             </div>
           </aside>
-          {active && <SystemPanel system={active} generatedAt={generatedAt} characterContext={`${characterName} · ${characterContext}`} />}
+          {active && <SystemPanel system={active} generatedAt={generatedAt} characterContext={`${characterName} · ${characterContext}`} palaceLaw={palaceLaw} />}
         </div>
       )}
     </section>
@@ -608,10 +622,39 @@ function FortuneCard({ fortune, compact = false }: {
   );
 }
 
-function SystemPanel({ system, generatedAt, characterContext }: {
+function AnniversaryCard({ anniversary, birthday, compact = false }: {
+  anniversary: PortalDashboard['anniversary'];
+  birthday: PortalDashboard['birthday'];
+  compact?: boolean;
+}) {
+  const view = anniversaryView(anniversary, birthday);
+  return (
+    <article className={`anniversary-card ${compact ? 'compact' : ''}`} aria-label="가입 기념일과 생일">
+      <header>
+        <span aria-hidden="true">🎉</span>
+        <div><small>ANNIVERSARY</small><strong>가입 기념일 · 생일</strong></div>
+      </header>
+      <dl>
+        <div><dt>가입일</dt><dd>{view.joinedDate}</dd></div>
+        <div><dt>가입 일수</dt><dd>{view.joinedDays}</dd></div>
+        <div><dt>다음 기념일</dt><dd>{view.nextMilestone}</dd></div>
+        <div><dt>생일</dt><dd>{view.birthday}<small>{view.birthdayDetail}</small></dd></div>
+      </dl>
+      {(view.joinCelebration || view.birthdayCelebration) && (
+        <div className="anniversary-celebrations" role="status">
+          {view.joinCelebration && <p>{view.joinCelebration}</p>}
+          {view.birthdayCelebration && <p>{view.birthdayCelebration}</p>}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function SystemPanel({ system, generatedAt, characterContext, palaceLaw }: {
   system: PortalSystem;
   generatedAt: string;
   characterContext: string;
+  palaceLaw: PortalDashboard['palaceLaw'];
 }) {
   const [copied, setCopied] = useState(false);
   const renameView = equipmentRenameView(system);
@@ -630,6 +673,7 @@ function SystemPanel({ system, generatedAt, characterContext }: {
         <span className="data-badge">실제 API · 읽기 전용</span>
       </div>
       <p className="feature-description">{system.description}</p>
+      {system.id === 'palace' && palaceLaw && <PalaceLawCard law={palaceLaw} />}
       {renameView && (
         <aside className="equipment-rename-readonly" aria-label="장비 이름 변경 안내">
           <span aria-hidden="true">✏️</span>
@@ -648,6 +692,22 @@ function SystemPanel({ system, generatedAt, characterContext }: {
         <button className="command-copy" type="button" onClick={copy}>{copied ? '복사됨' : '카톡 명령어 복사'}</button>
       </div>
     </section>
+  );
+}
+
+function PalaceLawCard({ law }: { law: NonNullable<PortalDashboard['palaceLaw']> }) {
+  const view = palaceLawView(law);
+  return (
+    <aside className={`palace-law-card ${view.active ? '' : 'inactive'}`} aria-label="왕궁 법령">
+      <header><span aria-hidden="true">👑</span><div><small>PALACE LAW</small><strong>{view.name}</strong></div></header>
+      <p>{view.description}</p>
+      <dl>
+        <div><dt>선포 시각</dt><dd>{view.proclaimedAt}</dd></div>
+        <div><dt>다음 변경</dt><dd>{view.nextChangeAt}</dd></div>
+        <div><dt>강화 지원령</dt><dd>{view.enhancementStatus}</dd></div>
+      </dl>
+      <small className="palace-law-readonly">카카오톡 /법령선포 · 홈페이지는 조회 전용</small>
+    </aside>
   );
 }
 
@@ -678,8 +738,8 @@ function PortalRankingPanel({ categories }: { categories: PortalRankingCategory[
           <thead><tr><th>순위</th><th>캐릭터 닉네임</th><th>직업</th><th>{active.label}</th></tr></thead>
           <tbody>
             {active.rows.map((row) => (
-              <tr className={`${row.rank <= 3 ? 'top-rank' : ''} ${row.current ? 'current-rank' : ''}`} key={`${active.id}-${row.rank}-${row.nickname}-${row.job}`}>
-                <td className="rank">{row.rank}위</td>
+              <tr className={`${row.rank !== null && row.rank <= 3 ? 'top-rank' : ''} ${row.current ? 'current-rank' : ''}`} key={row.id ?? `${active.id}-${row.rank}-${row.nickname}-${row.job}`}>
+                <td className="rank">{row.rank === null ? '미산정' : `${row.rank}위`}</td>
                 <td><b>{row.nickname || '이름 없는 캐릭터'}</b></td>
                 <td>{row.job}</td>
                 <td>{row.value}</td>
@@ -688,7 +748,8 @@ function PortalRankingPanel({ categories }: { categories: PortalRankingCategory[
           </tbody>
         </table>
       </div>
-      <p className="my-ranking">{mine ? `내 순위: ${mine.rank}위` : '내 순위: 랭킹 기록 없음'}</p>
+      <p className="my-ranking">{mine ? (mine.rank === null ? '내 기록: 미산정' : `내 순위: ${mine.rank}위`) : '현재 페이지에 내 기록이 없습니다. 다른 페이지 또는 대상 범위를 확인해 주세요.'}</p>
+    {active.pagination && <p>표시 {active.pagination.from}–{active.pagination.to} / {active.pagination.total}명 · 0기록 {active.pagination.zero}명 · 미산정 {active.pagination.unassessed}명</p>}
     </div>
   );
 }
@@ -852,7 +913,20 @@ function PremiumSection({ mobile = false }: { mobile?: boolean }) {
   );
 }
 
-function RankingSection({ state, mobile = false }: { state: DashboardState; mobile?: boolean }) {
+function RankingSection({ state: initialState, mobile = false }: { state: DashboardState; mobile?: boolean }) {
+  const [page, setPage] = useState(1);
+  const [pageState, setPageState] = useState<{basis:PortalDashboard;page:number;view:DashboardState}|null>(null);
+  useEffect(() => {
+    if (initialState.status !== 'success') {setPageState(null);setPage(1);return;}
+    if (page === 1) return;
+    let active = true;
+    const basis = initialState.data;
+    setPageState({basis,page,view:{status:'loading'}});
+    getPortalDashboard(page).then(data=>{if(active)setPageState({basis,page,view:{status:'success',data}});}).catch(()=>{if(active)setPageState({basis,page,view:{status:'error'}});});
+    return ()=>{active=false;};
+  }, [page, initialState]);
+  const state: DashboardState = initialState.status !== 'success' || page === 1 ? initialState
+    : pageState?.basis === initialState.data && pageState.page === page ? pageState.view : {status:'loading'};
   const [group, setGroup] = useState<'overall' | 'byJob' | 'hallOfFame'>('overall');
   const [overallId, setOverallId] = useState<PortalRankingCategory['id']>('power');
   const [jobId, setJobId] = useState<'warrior' | 'archer' | 'mage'>('warrior');
@@ -860,14 +934,14 @@ function RankingSection({ state, mobile = false }: { state: DashboardState; mobi
     ? state.data.systems.find((system) => system.id === 'rankings')?.rankings
     : undefined;
   const overall = rankings?.categories.filter((category) => (
-    ['power', 'level', 'exp', 'gold', 'tower', 'raid'].includes(category.id)
+    !['warrior', 'archer', 'mage'].includes(category.id)
   )) ?? [];
   const activeOverall = overall.find((category) => category.id === overallId) ?? overall[0];
   const byJob = jobRankingCategories(rankings);
   const activeJob = byJob.find((category) => category.id === jobId) ?? byJob[0];
   const active = group === 'overall' ? activeOverall : group === 'byJob' ? activeJob : undefined;
   const rows = active?.rows ?? [];
-  const podium = rows.slice(0, 3);
+  const podium = rows.filter(row=>row.rank !== null && row.rank <= 3);
   const ordered = podium.length === 3 ? [podium[1], podium[0], podium[2]] : podium;
   const hallOfFame = rankings?.hallOfFame ?? [];
   const membership = resolveMembershipEntitlement(state.status === 'success' ? state.data : undefined);
@@ -881,7 +955,7 @@ function RankingSection({ state, mobile = false }: { state: DashboardState; mobi
             ['byJob', '직업별'],
             ['hallOfFame', '명예의 전당'],
           ] as const).map(([id, label]) => (
-            <button className={`tab ${group === id ? 'active' : ''}`} role="tab" aria-selected={group === id} type="button" key={id} onClick={() => setGroup(id)}>{label}</button>
+            <button className={`tab ${group === id ? 'active' : ''}`} role="tab" aria-selected={group === id} type="button" key={id} onClick={() => {setGroup(id);setPage(1);}}>{label}</button>
           ))}
         </div>
       </SectionHeading>
@@ -894,12 +968,12 @@ function RankingSection({ state, mobile = false }: { state: DashboardState; mobi
       )}
       {state.status === 'success' && group === 'overall' && (
         activeOverall
-          ? <RankingRows category={activeOverall} tabs={overall} select={(id) => setOverallId(id)} ordered={ordered} rankings={rankings} membershipActive={membership.active} />
+          ? <RankingRows category={activeOverall} tabs={overall} select={(id) => {setOverallId(id);setPage(1);}} ordered={ordered} rankings={rankings} membershipActive={membership.active} />
           : <RankingMessage title="등록된 종합 랭킹 정보가 없습니다." />
       )}
       {state.status === 'success' && group === 'byJob' && (
         activeJob
-          ? <RankingRows category={activeJob} tabs={byJob} select={(id) => setJobId(id as typeof jobId)} ordered={ordered} rankings={rankings} membershipActive={membership.active} />
+          ? <RankingRows category={activeJob} tabs={byJob} select={(id) => {setJobId(id as typeof jobId);setPage(1);}} ordered={ordered} rankings={rankings} membershipActive={membership.active} />
           : <RankingMessage title="등록된 직업별 랭킹 정보가 없습니다." />
       )}
       {state.status === 'success' && group === 'hallOfFame' && (
@@ -915,6 +989,14 @@ function RankingSection({ state, mobile = false }: { state: DashboardState; mobi
           ))}</div>
           : <RankingMessage title="명예의 전당 기록이 아직 없습니다." detail="게임 내 기록이 쌓이면 이곳에 표시됩니다." />
       )}
+      {group !== 'hallOfFame' && <div className="tabs" aria-label="랭킹 페이지">
+        <button type="button" className="button" disabled={page<=1} onClick={()=>setPage(page-1)}>이전 페이지</button>
+        <span>{page}페이지 · 전체 {active?.pagination?.total ?? '확인 중'}명 · 총 {active?.pagination?.pages ?? '확인 중'}페이지</span>
+        <button type="button" className="button" disabled={state.status !== 'success' || page >= (active?.pagination?.pages ?? 1)} onClick={()=>setPage(page+1)}>다음 페이지</button>
+        {page>1 && <button type="button" className="button" onClick={()=>setPage(1)}>첫 페이지</button>}
+      </div>}
+      {rankings && <p className="my-ranking">조회 기준: RPG sequence {rankings.revision ?? '확인 필요'}. 활동이 발생하면 다음 페이지의 기준이 달라질 수 있습니다.</p>}
+      {rankings?.unavailableCategories?.map(item=><p className="my-ranking" key={item.id}>{item.reason}</p>)}
     </section>
   );
 }
@@ -927,7 +1009,7 @@ function jobRankingCategories(rankings?: PortalRankings): PortalRankingCategory[
     ['mage', '마법사'],
   ] as const).flatMap(([id, label]) => {
     const rows = rankings.byJob?.[id] ?? [];
-    return rows.length ? [{ id, label, rows }] : [];
+    return [{ id, label, rows, pagination:rankings.byJobPagination?.[id] }];
   });
 }
 
@@ -947,14 +1029,15 @@ function RankingRows({ category, tabs, select, ordered, rankings, membershipActi
       ))}
     </div>
     <div className="podium">{ordered.map((row) => (
-      <article className={`podium-card ${row.rank === 1 ? 'first' : ''} ${row.current ? 'current-rank' : ''}`} key={`${category.id}-${row.rank}-${row.nickname}`}>
+      <article className={`podium-card ${row.rank === 1 ? 'first' : ''} ${row.current ? 'current-rank' : ''}`} key={row.id ?? `${category.id}-${row.rank}-${row.nickname}`}>
         <div className="podium-rank">{row.rank}</div><h3>{row.nickname}</h3><p>{row.job} · {row.value}</p>
       </article>
     ))}</div>
     <div className="table-wrap"><table><thead><tr><th>순위</th><th>모험가</th><th>직업</th><th>{category.label}</th></tr></thead><tbody>
-      {category.rows.map((row) => <tr className={row.current ? 'current-rank' : ''} key={`${category.id}-${row.rank}-${row.nickname}`}><td className="rank">{row.rank}</td><td><b>{row.nickname}</b></td><td>{row.job}</td><td>{row.value}</td></tr>)}
+      {category.rows.map((row) => <tr className={row.current ? 'current-rank' : ''} key={row.id ?? `${category.id}-${row.rank}-${row.nickname}`}><td className="rank">{row.rank ?? '미산정'}</td><td><b>{row.nickname}</b></td><td>{row.job}</td><td>{row.value}</td></tr>)}
     </tbody></table></div>
-    <p className="my-ranking">{mine ? `내 순위: ${mine.rank}위` : '내 순위: 랭킹 기록 없음'}</p>
+    <p className="my-ranking">{mine ? (mine.rank === null ? '내 기록: 미산정' : `내 순위: ${mine.rank}위`) : '현재 페이지에 내 기록이 없습니다. 다른 페이지 또는 대상 범위를 확인해 주세요.'}</p>
+    {category.pagination && <p>표시 {category.pagination.from}–{category.pagination.to} / {category.pagination.total}명 · 0기록 {category.pagination.zero}명 · 미산정 {category.pagination.unassessed}명</p>}
     <MembershipRankingInsights rankings={rankings} active={membershipActive} />
   </>;
 }
@@ -986,4 +1069,14 @@ function dashboardBadge(auth: AuthState, state: DashboardState) {
 function formatTimestamp(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '시간 정보 없음' : date.toLocaleString('ko-KR');
+}
+
+function NoticesSection() {
+  const [items,setItems]=useState<NoticeSummary[]|null>(null),[error,setError]=useState(false),[detail,setDetail]=useState<Notice|null>(null);
+  useEffect(()=>{let active=true;getNotices().then(result=>{if(active)setItems(result.items);}).catch(()=>{if(active)setError(true);});return()=>{active=false;};},[]);
+  async function show(id:string){try{setDetail(await getNotice(id));setError(false);}catch{setError(true);}}
+  return <section className="section" id="notices"><SectionHeading eyebrow="NOTICE" title="공지사항" />
+    {error?<p role="alert">공지 서버에 연결할 수 없습니다. 공지 없음으로 처리하지 않았습니다.</p>:items===null?<p>공지사항을 불러오는 중입니다.</p>:items.length===0?<p>현재 게시된 공지사항이 없습니다.</p>:<div className="tabs">{items.map(item=><button className="button" type="button" key={item.id} onClick={()=>void show(item.id)}>{item.title}</button>)}</div>}
+    {detail&&<article className="policy-box"><h3>{detail.title}</h3><p style={{whiteSpace:'pre-wrap'}}>{detail.content}</p></article>}
+  </section>;
 }

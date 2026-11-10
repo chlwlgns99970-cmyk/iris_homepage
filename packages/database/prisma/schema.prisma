@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  engineType = "client"
 }
 
 datasource db {
@@ -39,6 +40,14 @@ enum PaymentOrderStatus {
   FAILED
   CANCELLED
   REFUNDED
+}
+
+model WebRateLimit {
+  key       String   @id @db.VarChar(160)
+  count     Int
+  expiresAt DateTime
+  @@index([expiresAt])
+  @@map("web_rate_limits")
 }
 
 model Notice {
@@ -97,7 +106,7 @@ model WebLoginRequest {
   userCodeHash     String                @unique
   deviceSecretHash String                @unique
   status           WebLoginRequestStatus @default(PENDING)
-  approvedBotUid   String?               @db.VarChar(8)
+  approvedBotUid   String?               @db.VarChar(9)
   expiresAt        DateTime
   approvedAt       DateTime?
   consumedAt       DateTime?

@@ -5,9 +5,12 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
+  BadRequestException,
+  ServiceUnavailableException,
   NotFoundException,
 } from '@nestjs/common';
-import { WebAccountStatus, WebLoginRequestStatus } from '@prisma/client';
+import { Prisma, WebAccountStatus, WebLoginRequestStatus } from '@prisma/client';
 import type { CookieOptions } from 'express';
 import { PrismaService } from '../infrastructure/prisma.service';
 import { RedisService } from '../infrastructure/redis.service';
@@ -64,11 +67,12 @@ export class AuthService {
   async enforceRateLimit(scope: string, subject: string, limit: number, windowSeconds: number) {
     assertWebAuthEnabled(this.config);
     const subjectHash = hmac(subject || 'unknown', this.config.tokenHashSecret);
-    const allowed = await this.redis.consumeRateLimit(
-      `web-auth:${scope}:${subjectHash}`,
-      limit,
-      windowSeconds,
-    );
+    let allowed: boolean;
+    try {
+      allowed = await this.redis.consumeRateLimit(`web-auth:${scope}:${subjectHash}`, limit, windowSeconds);
+    } catch {
+      throw new ServiceUnavailableException({ code: 'WEB_AUTH_RATE_LIMIT_UNAVAILABLE', message: '인증 서버에 연결할 수 없습니다.' });
+    }
     if (!allowed) {
       throw new HttpException({
         code: 'WEB_AUTH_RATE_LIMITED',
@@ -79,7 +83,7 @@ export class AuthService {
 
   async start(pendingToken: string | null = null) {
     assertWebAuthEnabled(this.config);
-    void this.cleanup().catch(() => undefined);
+    void this.cleanup().catch(() => { new Logger(AuthService.name).warn('web_auth_cleanup_failed'); });
     if (pendingToken) {
       const resumed = await this.resumePendingRequest(pendingToken);
       if (resumed) return resumed;
@@ -140,7 +144,10 @@ export class AuthService {
           expiresAt,
           resumed: false,
         };
-      } catch {
+      } catch (error) {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+          throw new ServiceUnavailableException({ code: 'WEB_AUTH_STORAGE_UNAVAILABLE', message: '인증 저장소에 연결할 수 없습니다.' });
+        }
         if (attempt === 3) throw new ConflictException('인증 요청을 생성하지 못했습니다.');
       }
     }
@@ -264,6 +271,7 @@ export class AuthService {
 
   async approve(userCode: string, botUid: string) {
     assertWebAuthEnabled(this.config);
+    if (!/^(?:\d{8}|P\d{8})$/.test(botUid)) throw new BadRequestException('UID 형식이 올바르지 않습니다.');
     const userCodeHash = hmac(userCode.toUpperCase(), this.config.tokenHashSecret);
 
     return this.prisma.$transaction(async (tx) => {
@@ -505,6 +513,7 @@ export class AuthService {
 
   private async cleanup() {
     const cutoff = new Date(Date.now() - this.config.cleanupRetentionMs);
+    if (this.redis.store === 'postgres') await this.prisma.webRateLimit.deleteMany({where:{expiresAt:{lt:cutoff}}});
     await this.prisma.webSession.deleteMany({
       where: {
         OR: [

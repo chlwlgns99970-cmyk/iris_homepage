@@ -25,6 +25,6 @@ export class ApproveDeviceDto {
   userCode!: string;
 
   @IsString()
-  @Matches(/^\d{8}$/)
+  @Matches(/^(?:\d{8}|P\d{8})$/)
   botUid!: string;
 }

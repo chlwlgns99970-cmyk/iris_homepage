@@ -51,6 +51,9 @@ const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   async rewrites() {
+    if (process.env.PHONE_ORIGIN_LEASE_ENABLED === 'true') {
+      return [{ source: '/api/:path*', destination: '/api/phone-proxy/:path*' }];
+    }
     const origin = resolveVpsApiOrigin();
     return origin
       ? [{ source: '/api/:path*', destination: `${origin}/api/:path*` }]

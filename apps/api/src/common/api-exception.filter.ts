@@ -47,7 +47,6 @@ export class ApiExceptionFilter implements ExceptionFilter {
       const exceptionName = exception instanceof Error
         ? exception.name
         : 'UnknownException';
-      const stack = exception instanceof Error ? exception.stack : undefined;
       this.logger.error(
         JSON.stringify({
           requestId,
@@ -56,7 +55,6 @@ export class ApiExceptionFilter implements ExceptionFilter {
           statusCode,
           exceptionName,
         }),
-        stack,
       );
     }
 

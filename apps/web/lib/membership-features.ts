@@ -74,8 +74,7 @@ export function buildMembershipRankingComparison(
     return comparison ? [comparison] : [];
   });
   const jobRows = jobRowsFor(rankings, current.job);
-  const currentJob = jobRows.find((row) => row.current)
-    ?? jobRows.find((row) => row.nickname === current.nickname);
+  const currentJob = jobRows.find((row) => row.current);
 
   return {
     overallRank: currentPower?.rank ?? null,
@@ -96,8 +95,8 @@ function compareCategory(
   category: PortalRankingCategory,
 ): RankingMetricComparison | null {
   const current = category.rows.find((row) => row.current);
-  if (!current || (category.id !== 'power' && category.id !== 'level')) return null;
-  const ordered = [...category.rows].sort((left, right) => left.rank - right.rank);
+  if (!current || current.rank === null || (category.id !== 'power' && category.id !== 'level')) return null;
+  const ordered = [...category.rows].filter(row=>row.rank !== null).sort((left, right) => left.rank! - right.rank!);
   const index = ordered.findIndex((row) => row.current);
   return {
     id: category.id,
@@ -115,7 +114,7 @@ function neighbor(row: PortalRankingRow, current: PortalRankingRow): RankingNeig
   const rowValue = numericValue(row.value);
   const currentValue = numericValue(current.value);
   return {
-    rank: row.rank,
+    rank: row.rank!,
     nickname: row.nickname,
     value: row.value,
     difference: rowValue === null || currentValue === null

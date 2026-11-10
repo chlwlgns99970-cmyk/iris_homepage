@@ -14,6 +14,7 @@ export const EQUIPMENT_MOBILE_SYSTEMS: readonly MobileSystemDefinition[] = Objec
 ]);
 
 export const GROWTH_MOBILE_SYSTEMS: readonly MobileSystemDefinition[] = Object.freeze([
+  { id: 'anniversary', icon: '🎉', title: '기념일', command: '/내정보' },
   { id: 'profile', icon: '👤', title: '내정보', command: '/내정보' },
   { id: 'attendance', icon: '📅', title: '출석', command: '/출석' },
   { id: 'boss', icon: '🐲', title: '일일 보스', command: '/보스' },

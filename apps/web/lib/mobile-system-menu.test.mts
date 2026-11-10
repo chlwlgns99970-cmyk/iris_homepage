@@ -52,4 +52,6 @@ test('growth menu count and source remain stable across repeated selections', ()
     assert.ok(result.some(({ id }) => id === selected.id));
   }
   assert.deepEqual(source, before);
+  assert.equal(GROWTH_MOBILE_SYSTEMS[0].id, 'anniversary');
+  assert.equal(GROWTH_MOBILE_SYSTEMS[0].command, '/내정보');
 });

@@ -85,17 +85,23 @@ export type PortalSystem = {
 };
 
 export type PortalRankingRow = {
-  rank: number;
+  id?: string;
+  rank: number | null;
   nickname: string;
   job: string;
   value: string;
   current: boolean;
+  assessed?: boolean;
+  reason?: string;
 };
 
+export type PortalPagination = { page: number; pages: number; pageSize: number; total: number; from: number; to: number; assessed: number; zero: number; unassessed: number; nextPage: number | null };
+
 export type PortalRankingCategory = {
-  id: 'power' | 'level' | 'exp' | 'gold' | 'tower' | 'raid' | 'warrior' | 'archer' | 'mage';
+  id: 'power' | 'level' | 'exp' | 'gold' | 'tower' | 'raid' | 'chat' | 'status' | 'season' | 'previous-season' | 'lotto' | 'warrior' | 'archer' | 'mage';
   label: string;
   rows: PortalRankingRow[];
+  pagination?: PortalPagination;
 };
 
 export type PortalHallOfFameRow = {
@@ -109,6 +115,12 @@ export type PortalHallOfFameRow = {
 
 export type PortalRankings = {
   categories: PortalRankingCategory[];
+  page?: number;
+  pages?: number;
+  revision?: number | null;
+  chatSequence?: number | null;
+  unavailableCategories?: {id:string;reason:string}[];
+  byJobPagination?: Partial<Record<'warrior' | 'archer' | 'mage', PortalPagination>>;
   overall?: {
     combatPower: PortalRankingRow[];
     level: PortalRankingRow[];
@@ -157,11 +169,47 @@ export type PortalFortune =
     expiresAt: string;
   };
 
+export type PortalAnniversaryMilestone = {
+  date: string;
+  days: number;
+  points: number;
+  kinds: ('day10' | 'hundred' | 'annual')[];
+};
+
+export type PortalAnniversary = {
+  joinedDate: string | null;
+  joinedDays: number | null;
+  nextMilestone: PortalAnniversaryMilestone | null;
+  todayMilestone: PortalAnniversaryMilestone | null;
+  todayRewardStatus: 'paid' | 'pending' | 'not_due';
+};
+
+export type PortalBirthday = {
+  registered: boolean;
+  month: number | null;
+  day: number | null;
+  leapDayObservedOn: '02-28' | '03-01' | null;
+  isToday: boolean;
+  rewardStatus: 'paid' | 'pending' | 'not_due';
+};
+
+export type PortalPalaceLaw = {
+  type: 'none' | 'combat' | 'growth' | 'commerce' | 'enhancement';
+  name: string;
+  description: string;
+  proclaimedAt: string | null;
+  nextChangeAt: string | null;
+  enhancementUsedToday: boolean;
+};
+
 export type PortalDashboard = {
   meta: { version: number; generatedAt: string };
   accountGender?: PortalCharacter['gender'];
   accountNickname?: string;
   fortune?: PortalFortune;
+  anniversary?: PortalAnniversary | null;
+  birthday?: PortalBirthday | null;
+  palaceLaw?: PortalPalaceLaw;
   systems: PortalSystem[];
   characters?: PortalCharacter[];
   artworks?: PortalArtwork[];
@@ -237,7 +285,13 @@ export function buildRequestInit(init: RequestInit = {}): RequestInit {
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, buildRequestInit(init));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  const abort = () => controller.abort();
+  init?.signal?.addEventListener('abort', abort, {once:true});
+  if (init?.signal?.aborted) controller.abort();
+  try {
+  const response = await fetch(`${API_BASE}${path}`, buildRequestInit({...init, signal:controller.signal}));
   if (!response.ok) {
     const body = await response.json().catch((): ApiErrorBody => ({
       message: '요청을 처리하지 못했습니다.',
@@ -245,6 +299,13 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(response.status, body as ApiErrorBody);
   }
   return response.json() as Promise<T>;
+  } catch (error) {
+    if (controller.signal.aborted) throw new ApiError(408, {code:'API_REQUEST_TIMEOUT',message:'서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.'});
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    init?.signal?.removeEventListener('abort', abort);
+  }
 }
 
 async function authApi<T>(path: string, init?: RequestInit): Promise<T> {
@@ -310,8 +371,8 @@ export const getCurrentAuth = () =>
 export const logout = () =>
   authApi<{ success: true }>('/api/auth/logout', { method: 'POST' });
 
-export const getPortalDashboard = () =>
-  api<PortalDashboard>('/api/portal/dashboard');
+export const getPortalDashboard = (page = 1) =>
+  api<PortalDashboard>(`/api/portal/dashboard?page=${encodeURIComponent(page)}`);
 
 export const getPaymentProducts = () =>
   api<PaymentStorefront>('/api/payments/products');

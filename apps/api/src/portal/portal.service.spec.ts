@@ -56,8 +56,8 @@ describe('PortalService user isolation', () => {
     expect(todoriCached).toBe(todori);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)))).toEqual([
-      { botUid: '00000002' },
-      { botUid: '00000007' },
+      { botUid: '00000002', rankingPage: 1 },
+      { botUid: '00000007', rankingPage: 1 },
     ]);
   });
 

@@ -25,7 +25,6 @@ export default function ConnectPage() {
   const [deviceRequest, setDeviceRequest] = useState<DeviceStartResponse | null>(null);
   const [approvedUid, setApprovedUid] = useState('');
   const [message, setMessage] = useState('');
-  const startedRef = useRef(false);
   const completingRef = useRef(false);
   const renewingRef = useRef(false);
 
@@ -34,8 +33,6 @@ export default function ConnectPage() {
   }, []);
 
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
     let active = true;
 
     async function initialize() {
@@ -47,9 +44,15 @@ export default function ConnectPage() {
           setView('success');
           return;
         }
-      } catch {
-        // 세션 확인이 불가능해도 새 인증 요청 생성을 시도합니다.
+      } catch (error) {
+        if (active) {
+          setMessage(error instanceof Error ? error.message : '인증 서버에 연결할 수 없습니다.');
+          setView('error');
+        }
+        return;
       }
+      // React strict-mode cleanup must cancel this attempt, not the next mount.
+      if (!active) return;
       try {
         const created = await startDeviceAuth();
         if (!active) return;

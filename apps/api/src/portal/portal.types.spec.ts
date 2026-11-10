@@ -12,6 +12,13 @@ describe('portal response validation', () => {
       accountGender: 'unknown',
       accountNickname: '',
       fortune: { active: false },
+      anniversary: null,
+      birthday: null,
+      palaceLaw: {
+        type: 'none', name: '없음',
+        description: '현재 왕궁 점령자가 새로운 법령을 선포할 수 있습니다.',
+        proclaimedAt: null, nextChangeAt: null, enhancementUsedToday: false,
+      },
     });
   });
 
@@ -27,6 +34,13 @@ describe('portal response validation', () => {
       accountGender: 'unknown',
       accountNickname: '',
       fortune: { active: false },
+      anniversary: null,
+      birthday: null,
+      palaceLaw: {
+        type: 'none', name: '없음',
+        description: '현재 왕궁 점령자가 새로운 법령을 선포할 수 있습니다.',
+        proclaimedAt: null, nextChangeAt: null, enhancementUsedToday: false,
+      },
     });
     expect(parsed).not.toHaveProperty('uid');
     expect(parsed).not.toHaveProperty('accountKey');
@@ -76,6 +90,91 @@ describe('portal response validation', () => {
     expect(() => parsePortalDashboard({
       ...valid,
       fortune: { active: true, type: 'private', name: 'x', description: 'x', expiresAt: valid.meta.generatedAt },
+    })).toThrow('invalid response');
+  });
+
+  it('sanitizes anniversary and birthday fields without exposing reward or operation internals', () => {
+    const parsed = parsePortalDashboard({
+      ...valid,
+      anniversary: {
+        joinedDate: '2025-08-10',
+        joinedDays: 365,
+        nextMilestone: { date: '2026-08-10', days: 365, points: 365, kinds: ['annual'], operationId: 'private' },
+        todayMilestone: { date: '2026-08-10', days: 365, points: 365, kinds: ['annual'] },
+        todayRewardStatus: 'paid',
+        todayReward: { points: 365 },
+        executedSlots: { private: true },
+      },
+      birthday: {
+        registered: true,
+        month: 2,
+        day: 29,
+        leapDayObservedOn: '02-28',
+        isToday: false,
+        rewardStatus: 'not_due',
+        reward: { gold: 1000000 },
+        uid: 'private',
+      },
+    });
+    expect(parsed.anniversary).toEqual({
+      joinedDate: '2025-08-10',
+      joinedDays: 365,
+      nextMilestone: { date: '2026-08-10', days: 365, points: 365, kinds: ['annual'] },
+      todayMilestone: { date: '2026-08-10', days: 365, points: 365, kinds: ['annual'] },
+      todayRewardStatus: 'paid',
+    });
+    expect(parsed.birthday).toEqual({
+      registered: true,
+      month: 2,
+      day: 29,
+      leapDayObservedOn: '02-28',
+      isToday: false,
+      rewardStatus: 'not_due',
+    });
+    expect(parsed.anniversary).not.toHaveProperty('todayReward');
+    expect(parsed.anniversary?.nextMilestone).not.toHaveProperty('operationId');
+    expect(parsed.birthday).not.toHaveProperty('reward');
+    expect(parsed.birthday).not.toHaveProperty('uid');
+  });
+
+  it('rejects malformed anniversary and birthday fields', () => {
+    expect(() => parsePortalDashboard({
+      ...valid,
+      anniversary: { joinedDate: '2026-02-30', joinedDays: 1, nextMilestone: null, todayMilestone: null, todayRewardStatus: 'paid' },
+    })).toThrow('invalid response');
+    expect(() => parsePortalDashboard({
+      ...valid,
+      birthday: { registered: true, month: 2, day: 29, leapDayObservedOn: '02-27', isToday: false, rewardStatus: 'not_due' },
+    })).toThrow('invalid response');
+    expect(() => parsePortalDashboard({
+      ...valid,
+      birthday: { registered: true, month: 4, day: 31, leapDayObservedOn: null, isToday: false, rewardStatus: 'not_due' },
+    })).toThrow('invalid response');
+  });
+
+  it('sanitizes a server-provided palace law without exposing owner or operation internals', () => {
+    const parsed = parsePortalDashboard({
+      ...valid,
+      palaceLaw: {
+        type: 'combat', name: '전투 장려령', description: '보스·탑·레이드 최종 공격력 +3%',
+        proclaimedAt: '2026-08-11T05:07:00.000Z', nextChangeAt: '2026-08-11T06:00:00.000Z',
+        enhancementUsedToday: false, proclaimedByUid: 'private', operationId: 'private',
+      },
+    });
+    expect(parsed.palaceLaw).toEqual({
+      type: 'combat', name: '전투 장려령', description: '보스·탑·레이드 최종 공격력 +3%',
+      proclaimedAt: '2026-08-11T05:07:00.000Z', nextChangeAt: '2026-08-11T06:00:00.000Z',
+      enhancementUsedToday: false,
+    });
+    expect(parsed.palaceLaw).not.toHaveProperty('proclaimedByUid');
+    expect(parsed.palaceLaw).not.toHaveProperty('operationId');
+  });
+
+  it('fails closed for malformed palace-law payloads', () => {
+    expect(() => parsePortalDashboard({ ...valid, palaceLaw: { type: 'private' } })).toThrow('invalid response');
+    expect(() => parsePortalDashboard({
+      ...valid,
+      palaceLaw: { type: 'none', name: '없음', description: '없음', proclaimedAt: valid.meta.generatedAt, nextChangeAt: null, enhancementUsedToday: false },
     })).toThrow('invalid response');
   });
 
