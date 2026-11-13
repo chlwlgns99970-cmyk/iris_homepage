@@ -6,12 +6,26 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const cp = require('node:child_process');
 const http = require('node:http');
+const {createInterface} = require('node:readline');
 const {gzipSync} = require('node:zlib');
 const {createRequire} = require('node:module');
 const {pathToFileURL} = require('node:url');
 
 const MONTH = 30 * 24 * 60 * 60 * 1000;
 const MAX_UPLOADS = 1500;
+
+function registeredRelayOrigin(line, validateOrigin) {
+  try {
+    const event = JSON.parse(line);
+    const address = event?.data?.address;
+    if (event?.type !== 'run.localhost.tunnel.registered' || event.data.port !== 80
+      || typeof address !== 'string' || event.subject !== address) return null;
+    const origin = 'https://' + address;
+    return validateOrigin(origin) === origin ? origin : null;
+  } catch {
+    return null;
+  }
+}
 
 function consumeUploadBudget(file, now = Date.now()) {
   let rows;
@@ -174,6 +188,7 @@ async function run(env = process.env) {
     || !/^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/routing\/phone-origin\.json$/.test(leaseUrl)) {
     throw new Error('WEB_RELAY_NOT_CONFIGURED');
   }
+  const {relayOrigin} = await import(pathToFileURL(path.resolve(__dirname,'../apps/web/lib/phone-origin.ts')).href);
   if (!fs.existsSync(knownHosts)) throw new Error('WEB_RELAY_HOST_KEY_REQUIRED');
   fs.mkdirSync(state, {recursive:true, mode:0o700});
   if (path.dirname(knownHosts) !== state || fs.lstatSync(state).isSymbolicLink()
@@ -223,11 +238,10 @@ async function run(env = process.env) {
         '-o','ServerAliveCountMax=2','-o','ConnectTimeout=10','-o','StrictHostKeyChecking=yes',
         '-o','UserKnownHostsFile='+knownHosts,'-R','80:127.0.0.1:39986','nokey@localhost.run','--','--output','json'],
         {stdio:['ignore','pipe','pipe'],windowsHide:true});
-      let current = '', updates = new AbortController(), task = Promise.resolve(), buffer = '';
-      const queue = data => {
-        buffer = (buffer + data.toString()).slice(-65536);
-        const urls = buffer.match(/https:\/\/[a-z0-9]{6,63}\.lhr\.life/g) || [];
-        const origin = urls.at(-1);
+      const events = createInterface({input:child.stdout, crlfDelay:Infinity});
+      let current = '', updates = new AbortController(), task = Promise.resolve();
+      events.on('line', line => {
+        const origin = registeredRelayOrigin(line, relayOrigin);
         if (!origin || origin === current) return;
         current = origin; activeOrigin = origin; updates.abort(); const previous = task; updates = new AbortController();
         const signal = AbortSignal.any([stop.signal, updates.signal]);
@@ -235,11 +249,12 @@ async function run(env = process.env) {
           publishConnection({origin:value, key, instanceId, budgetPath:path.join(state,'upload-attempts.ndjson'),
             put, token, leaseUrl, signal:AbortSignal.any([signal,AbortSignal.timeout(8000)]), now})
         })).catch(error => { log('web_relay_publication_held'); stop.abort(); });
-      };
-      child.stdout.on('data', queue); child.stderr.on('data', queue);
+      });
+      child.stderr.resume();
       const terminate = () => child.kill('SIGTERM'); stop.signal.addEventListener('abort', terminate, {once:true});
       let startError;
       await new Promise(resolve => { child.once('exit', resolve); child.once('error',error=>{startError=error;resolve();}); });
+      events.close();
       activeOrigin = ''; stop.signal.removeEventListener('abort', terminate); updates.abort(); await task;
       if (startError) throw new Error('WEB_RELAY_SSH_START_FAILED');
       if (!stop.signal.aborted) { log('web_relay_reconnecting'); await wait(5000, stop.signal); }
@@ -253,7 +268,7 @@ async function run(env = process.env) {
   }
 }
 
-module.exports = {consumeUploadBudget, publishConnection, maintainConnection, createRelayBoundary, run};
+module.exports = {registeredRelayOrigin, consumeUploadBudget, publishConnection, maintainConnection, createRelayBoundary, run};
 if (require.main === module) run().catch(() => {
   console.error(JSON.stringify({event:'web_relay_start_or_recovery_required'})); process.exitCode = 1;
 });

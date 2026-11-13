@@ -68,7 +68,7 @@ test('changed signed connection address is used on the next request without mixi
     ? Response.json(createPhoneOriginLease(pointer,key,'synthetic-instance-001',now))
     : Response.json({source:String(url),account:new Headers(options?.headers).get('cookie')});
   const first=await forwardPhoneRequest(request('/api/portal/dashboard?page=2',{headers:{cookie:'A'}}),'/api/portal/dashboard',{env,now:()=>now,fetchImpl});
-  pointer='https://fedcba12345678.lhr.life';
+  pointer='https://fedcba12345678.app.lhr.life';
   const second=await forwardPhoneRequest(request('/api/portal/dashboard?page=3',{headers:{cookie:'B'}}),'/api/portal/dashboard',{env,now:()=>now,fetchImpl});
   assert.deepEqual(await first.json(),{source:origin+'/api/portal/dashboard?page=2',account:'A'});
   assert.deepEqual(await second.json(),{source:pointer+'/api/portal/dashboard?page=3',account:'B'});

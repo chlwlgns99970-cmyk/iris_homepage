@@ -10,11 +10,11 @@ export type PhoneOriginLease = {
   mac: string;
 };
 
-function relayOrigin(value: string) {
+export function relayOrigin(value: string) {
   const url = new URL(value);
   if (url.protocol !== 'https:' || url.port || url.username || url.password
     || url.pathname !== '/' || url.search || url.hash
-    || !/^[a-z0-9]{6,63}\.lhr\.life$/.test(url.hostname)) {
+    || !/^[a-z0-9]{6,63}(?:\.app)?\.lhr\.life$/.test(url.hostname)) {
     throw new Error('PHONE_ORIGIN_REJECTED');
   }
   return url.origin;

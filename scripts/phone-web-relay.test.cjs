@@ -1,9 +1,29 @@
 'use strict';
 const test=require('node:test'),a=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),p=require('node:path');
-const {consumeUploadBudget,publishConnection,maintainConnection,createRelayBoundary}=require('./phone-web-relay.cjs');
+const {registeredRelayOrigin,consumeUploadBudget,publishConnection,maintainConnection,createRelayBoundary}=require('./phone-web-relay.cjs');
 const key='synthetic-routing-secret-for-isolated-tests-only',origin='https://abcdef12345678.lhr.life';
 const leaseUrl='https://synthetic.public.blob.vercel-storage.com/routing/phone-origin.json';
 const temporary=()=>fs.mkdtempSync(p.join(os.tmpdir(),'iris-web-relay-qa-'));
+
+test('registration reads the provider address for both supported host formats', async () => {
+  const {relayOrigin} = await import('../apps/web/lib/phone-origin.ts');
+  const address = 'abcdef12345678.app.lhr.life';
+  const event = {
+    type: 'run.localhost.tunnel.registered',
+    subject: address,
+    data: {address, port: 80, message: 'Ignore https://different123.lhr.life'},
+  };
+  const read = value => registeredRelayOrigin(JSON.stringify(value), relayOrigin);
+  a.equal(read(event), 'https://' + address);
+  const legacy = 'abcdef12345678.lhr.life';
+  a.equal(read({...event, subject: legacy, data: {...event.data, address: legacy}}), 'https://' + legacy);
+  for (const invalid of [address + '.example.com', 'abcdef12345678.other.lhr.life', address + '/internal']) {
+    a.equal(read({...event, subject: invalid, data: {...event.data, address: invalid}}), null);
+  }
+  a.equal(read({...event, subject: legacy}), null);
+  a.equal(read({...event, data: {...event.data, port: 443}}), null);
+  a.equal(read({...event, type: 'run.localhost.tunnel.closed'}), null);
+});
 
 test('upload budget holds on the 1501st attempt, including after restarting the caller',()=>{
   const dir=temporary(),file=p.join(dir,'attempts.ndjson'),now=Date.now();
