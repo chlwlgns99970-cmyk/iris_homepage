@@ -128,3 +128,65 @@ test('unproved or reassigned tunnel never receives a browser cookie or request b
     assert.equal(response.status,503);assert.equal(calls,2);
   }
 });
+
+function cachedFixture() {
+  let time = now, generation = 1, secret = key, invalidProof = false;
+  let metadata = 0, proofs = 0, upstream = 0;
+  const current = () => createPhoneOriginLease(generation === 1 ? origin : 'https://abcdef98765432.app.lhr.life', secret, 'synthetic-instance-00'+generation, now);
+  const fetchImpl: typeof fetch = async (url, options) => {
+    if (options?.signal?.aborted) throw new DOMException('aborted','AbortError');
+    const target = new URL(String(url));
+    if (target.hostname.endsWith('.blob.vercel-storage.com')) { metadata++; return Response.json(current()); }
+    if (target.pathname === '/api/connection-proof') {
+      proofs++;
+      return Response.json(createPhoneOriginProof(target.origin, 'synthetic-instance-00'+(invalidProof ? generation+1 : generation),target.searchParams.get('challenge')!,secret));
+    }
+    upstream++;
+    return Response.json({cookie:new Headers(options?.headers).get('cookie')});
+  };
+  const call = (options:RequestInit = {}) => {
+    const path=options.method==='POST'?'/api/auth/device/complete':'/api/auth/me';
+    return rawForwardPhoneRequest(request(path,options),path,{env:{...env,PHONE_ORIGIN_LEASE_SECRET:secret},fetchImpl,now:()=>time});
+  };
+  return {call,current,counts:()=>({metadata,proofs,upstream}),clock:(value:number)=>{time=value;},
+    rotate:()=>{generation++;},key:(value:string)=>{secret=value;},invalid:(value:boolean)=>{invalidProof=value;}};
+}
+
+test('short lease cache still challenges every request and never shares cookie responses',async()=>{
+  const f=cachedFixture();await f.call();
+  const results=await Promise.all(Array.from({length:6},(_,i)=>f.call({headers:{cookie:'synthetic-session-'+i}}).then(r=>r.json())));
+  assert.deepEqual(results.map(row=>row.cookie),Array.from({length:6},(_,i)=>'synthetic-session-'+i));
+  assert.deepEqual(f.counts(),{metadata:1,proofs:7,upstream:7});
+});
+
+test('cached lease expires with the same signed expiry and refreshes at bounded fifteen seconds',async()=>{
+  const f=cachedFixture();await f.call();f.clock(now+14999);await f.call();assert.equal(f.counts().metadata,1);
+  f.clock(now+15000);await f.call();assert.equal(f.counts().metadata,2);
+  const g=cachedFixture();g.clock(now+2*3600000-2);await g.call();g.clock(now+2*3600000+1);
+  assert.equal((await g.call()).status,503);assert.equal(g.counts().upstream,1);
+});
+
+test('proof failure after address rotation invalidates lease before credentials and next request refreshes',async()=>{
+  const f=cachedFixture();await f.call();f.rotate();
+  assert.equal((await f.call({headers:{cookie:'must-not-forward'}})).status,503);
+  assert.equal(f.counts().upstream,1);
+  assert.equal((await f.call()).status,200);
+  assert.deepEqual(f.counts(),{metadata:2,proofs:3,upstream:2});
+});
+
+test('routing key changes cannot reuse a lease verified with the old key',async()=>{
+  const f=cachedFixture();await f.call();f.key('different-synthetic-routing-secret-123456789');
+  assert.equal((await f.call()).status,200);assert.equal(f.counts().metadata,2);
+});
+
+test('failed fresh proof with cached metadata evicts the cache without retrying an upstream write',async()=>{
+  const f=cachedFixture();await f.call();f.invalid(true);
+  assert.equal((await f.call({method:'POST',body:'synthetic-private-code'})).status,503);assert.equal(f.counts().upstream,1);
+  f.invalid(false);assert.equal((await f.call()).status,200);assert.equal(f.counts().metadata,2);
+});
+
+test('cancelled request with cached lease does not forward credentials or retry',async()=>{
+  const f=cachedFixture();await f.call();const cancelled=new AbortController();cancelled.abort();
+  assert.equal((await f.call({method:'POST',body:'private-code',signal:cancelled.signal})).status,503);
+  assert.equal(f.counts().upstream,1);
+});

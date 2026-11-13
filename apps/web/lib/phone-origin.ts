@@ -1,6 +1,8 @@
 import { createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
 
 export const PHONE_LEASE_DURATION_MS = 2 * 60 * 60 * 1000;
+const LEASE_CACHE_MS = 15_000;
+let cachedLease: {url: string; secret: string; fetchImpl: typeof fetch; receivedAt: number; lease: PhoneOriginLease} | undefined;
 export type PhoneOriginLease = {
   version: 1;
   origin: string;
@@ -112,6 +114,7 @@ export async function forwardPhoneRequest(request: Request, path: string, {
     return error(404, 'NOT_FOUND', '찾을 수 없습니다.');
   }
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timings: Record<string, number> = {};
   let stage = 'configuration';
   const cancel = () => controller.abort();
   request.signal.addEventListener('abort', cancel, {once: true});
@@ -124,15 +127,28 @@ export async function forwardPhoneRequest(request: Request, path: string, {
       throw new Error('PHONE_LEASE_NOT_CONFIGURED');
     }
     stage = 'connection_metadata';
-    const metadata = await fetchImpl(leaseUrl, {cache:'no-store', redirect:'error', signal:controller.signal});
-    if (!metadata.ok) throw new Error('PHONE_LEASE_UNAVAILABLE');
-    const leaseBytes = await limitedBody(metadata.body, 8_192, controller.signal);
-    const lease = verifyPhoneOriginLease(JSON.parse(leaseBytes.toString('utf8')), env.PHONE_ORIGIN_LEASE_SECRET || '', now());
+    let started = performance.now();
+    const secret = env.PHONE_ORIGIN_LEASE_SECRET || '';
+    const cached = cachedLease;
+    let lease: PhoneOriginLease;
+    if (cached && cached.url === leaseUrl.href && cached.secret === secret && cached.fetchImpl === fetchImpl
+      && now() >= cached.receivedAt && now() - cached.receivedAt < LEASE_CACHE_MS) {
+      lease = verifyPhoneOriginLease(cached.lease, secret, now());
+    } else {
+      cachedLease = undefined;
+      const metadata = await fetchImpl(leaseUrl, {cache:'no-store', redirect:'error', signal:controller.signal});
+      if (!metadata.ok) throw new Error('PHONE_LEASE_UNAVAILABLE');
+      const leaseBytes = await limitedBody(metadata.body, 8_192, controller.signal);
+      lease = verifyPhoneOriginLease(JSON.parse(leaseBytes.toString('utf8')), secret, now());
+      cachedLease = {url:leaseUrl.href, secret, fetchImpl, receivedAt:now(), lease:Object.freeze(lease)};
+    }
+    timings.lease = performance.now() - started;
     stage = 'request_body';
     const body = await limitedBody(request.body, 16_384, controller.signal);
     // A signed URL alone cannot prove a rotating free hostname still reaches this phone.
     // Check a fresh challenge against this exact relay instance before sending any cookie/body.
     stage = 'phone_identity';
+    started = performance.now();
     const challenge = randomBytes(32).toString('hex');
     const proof = await fetchImpl(lease.origin + '/api/connection-proof?challenge=' + challenge, {
       headers:{Accept:'application/json'},cache:'no-store',redirect:'error',signal:controller.signal,
@@ -140,6 +156,7 @@ export async function forwardPhoneRequest(request: Request, path: string, {
     if (!proof.ok) throw new Error('PHONE_PROOF_UNAVAILABLE');
     verifyPhoneOriginProof(JSON.parse((await limitedBody(proof.body,8192,controller.signal)).toString('utf8')),
       lease,challenge,env.PHONE_ORIGIN_LEASE_SECRET || '');
+    timings.proof = performance.now() - started;
     const query = new URL(request.url).search;
     const headers = new Headers({Accept:'application/json'});
     // Never forward arbitrary browser/server credentials or internal API headers.
@@ -148,6 +165,7 @@ export async function forwardPhoneRequest(request: Request, path: string, {
       if (value) headers.set(name, value);
     }
     stage = 'phone_api';
+    started = performance.now();
     const upstream = await fetchImpl(lease.origin + path + query, {
       method:request.method, headers, body:body.length ? body : undefined,
       cache:'no-store', redirect:'error', signal:controller.signal,
@@ -156,13 +174,16 @@ export async function forwardPhoneRequest(request: Request, path: string, {
     if (upstream.status !== 204 && !upstream.headers.get('content-type')?.includes('application/json')) {
       throw new Error('PHONE_PROXY_RESPONSE_INVALID');
     }
+    timings.api = performance.now() - started;
     const responseHeaders = new Headers({'Cache-Control':'private, no-store, max-age=0', Vary:'Cookie'});
+    responseHeaders.set('Server-Timing', Object.entries(timings).map(([name, duration]) => name + ';dur=' + duration.toFixed(1)).join(', '));
     for (const name of ['content-type','retry-after']) {
       const value = upstream.headers.get(name); if (value) responseHeaders.set(name,value);
     }
     for (const value of upstream.headers.getSetCookie()) responseHeaders.append('set-cookie', value);
     return new Response(upstream.status === 204 ? null : content, {status:upstream.status, headers:responseHeaders});
   } catch (caught) {
+    if (stage === 'phone_identity' || stage === 'connection_metadata') cachedLease = undefined;
     const code = caught instanceof Error && /^PHONE_[A-Z_]+$/.test(caught.message) ? caught.message : 'PHONE_PROXY_UNAVAILABLE';
     console.warn('phone_portal_unavailable', {stage, code});
     if (stage === 'request_body' && code === 'PHONE_PROXY_TOO_LARGE') {
