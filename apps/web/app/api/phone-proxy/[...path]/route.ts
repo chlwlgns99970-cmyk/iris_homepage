@@ -1,6 +1,7 @@
 import { forwardPhoneRequest } from '@/lib/phone-origin';
 
 export const runtime = 'nodejs';
+export const preferredRegion = 'icn1';
 export const dynamic = 'force-dynamic';
 
 async function proxy(request: Request, context: {params: Promise<{path: string[]}>}) {
