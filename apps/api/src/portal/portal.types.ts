@@ -118,7 +118,7 @@ function parseRingOptions(value: unknown): PortalEquippedRing['options'] {
   for (const candidate of value) {
     if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
     const option = candidate as Record<string, unknown>;
-    if (typeof option.type !== 'string' || !Object.hasOwn(ringOptionDefinitions, option.type)) return [];
+    if (typeof option.type !== 'string' || !Object.prototype.hasOwnProperty.call(ringOptionDefinitions, option.type)) return [];
     const definition = ringOptionDefinitions[option.type];
     if (!nonNegativeInteger(option.value) || option.value < 1 || option.value > definition.max || types.has(option.type)) return [];
     types.add(option.type);
