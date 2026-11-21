@@ -47,6 +47,7 @@ import {
 } from '@/lib/auth-session-policy';
 import { SiteFooter } from '@/components/site-footer';
 import { MembershipProfileFrame } from '@/components/membership-profile-frame';
+import { EquippedRing } from '@/components/equipped-ring';
 import { MembershipRankingInsights } from '@/components/membership-ranking-insights';
 import { resolveMembershipEntitlement, shouldUseMembershipProfileFrame } from '@/lib/membership-features';
 
@@ -867,7 +868,7 @@ function SelectedCharacter({ selected, character, accountGender, accountNickname
   return (
     <article className="selected-dashboard">
       <div className="selected-profile"><MembershipProfileFrame src={resolveCharacterImage(key, resolveEffectiveGender(character?.gender, accountGender), 'profile')} alt={`${visual.label} 프로필`} active={membershipActive} /><div><small>{membershipActive ? '오리진 멤버십 캐릭터' : character && !displayFallback ? '선택 캐릭터' : '기본 직업 소개'}</small><h3>{character ? characterDisplayName(character) : defaultCharacterName(key, accountNickname)}</h3><p>{displayFallback ? '저장된 설정 없이 화면 기본 외형만 표시합니다.' : character?.title ?? '게임 데이터 연결 시 상세정보가 표시됩니다.'}</p></div></div>
-      <div className="selected-stats">{facts.map(([label, value]) => <div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
+      <div className="selected-stats">{facts.map(([label, value]) => <div key={label}><small>{label}</small><b>{value}</b></div>)}{!displayFallback && <EquippedRing character={character} />}</div>
     </article>
   );
 }
@@ -916,12 +917,18 @@ function PremiumSection({ mobile = false }: { mobile?: boolean }) {
 function RankingSection({ state: initialState, mobile = false }: { state: DashboardState; mobile?: boolean }) {
   const [page, setPage] = useState(1);
   const [pageState, setPageState] = useState<{basis:PortalDashboard;page:number;view:DashboardState}|null>(null);
+  if (initialState.status !== 'success' && (page !== 1 || pageState !== null)) {
+    setPage(1);
+    setPageState(null);
+  }
+  function selectPage(nextPage: number) {
+    setPage(nextPage);
+    setPageState(null);
+  }
   useEffect(() => {
-    if (initialState.status !== 'success') {setPageState(null);setPage(1);return;}
-    if (page === 1) return;
+    if (initialState.status !== 'success' || page === 1) return;
     let active = true;
     const basis = initialState.data;
-    setPageState({basis,page,view:{status:'loading'}});
     getPortalDashboard(page).then(data=>{if(active)setPageState({basis,page,view:{status:'success',data}});}).catch(()=>{if(active)setPageState({basis,page,view:{status:'error'}});});
     return ()=>{active=false;};
   }, [page, initialState]);
@@ -955,7 +962,7 @@ function RankingSection({ state: initialState, mobile = false }: { state: Dashbo
             ['byJob', '직업별'],
             ['hallOfFame', '명예의 전당'],
           ] as const).map(([id, label]) => (
-            <button className={`tab ${group === id ? 'active' : ''}`} role="tab" aria-selected={group === id} type="button" key={id} onClick={() => {setGroup(id);setPage(1);}}>{label}</button>
+            <button className={`tab ${group === id ? 'active' : ''}`} role="tab" aria-selected={group === id} type="button" key={id} onClick={() => {setGroup(id);selectPage(1);}}>{label}</button>
           ))}
         </div>
       </SectionHeading>
@@ -968,12 +975,12 @@ function RankingSection({ state: initialState, mobile = false }: { state: Dashbo
       )}
       {state.status === 'success' && group === 'overall' && (
         activeOverall
-          ? <RankingRows category={activeOverall} tabs={overall} select={(id) => {setOverallId(id);setPage(1);}} ordered={ordered} rankings={rankings} membershipActive={membership.active} />
+          ? <RankingRows category={activeOverall} tabs={overall} select={(id) => {setOverallId(id);selectPage(1);}} ordered={ordered} rankings={rankings} membershipActive={membership.active} />
           : <RankingMessage title="등록된 종합 랭킹 정보가 없습니다." />
       )}
       {state.status === 'success' && group === 'byJob' && (
         activeJob
-          ? <RankingRows category={activeJob} tabs={byJob} select={(id) => {setJobId(id as typeof jobId);setPage(1);}} ordered={ordered} rankings={rankings} membershipActive={membership.active} />
+          ? <RankingRows category={activeJob} tabs={byJob} select={(id) => {setJobId(id as typeof jobId);selectPage(1);}} ordered={ordered} rankings={rankings} membershipActive={membership.active} />
           : <RankingMessage title="등록된 직업별 랭킹 정보가 없습니다." />
       )}
       {state.status === 'success' && group === 'hallOfFame' && (
@@ -990,10 +997,10 @@ function RankingSection({ state: initialState, mobile = false }: { state: Dashbo
           : <RankingMessage title="명예의 전당 기록이 아직 없습니다." detail="게임 내 기록이 쌓이면 이곳에 표시됩니다." />
       )}
       {group !== 'hallOfFame' && <div className="tabs" aria-label="랭킹 페이지">
-        <button type="button" className="button" disabled={page<=1} onClick={()=>setPage(page-1)}>이전 페이지</button>
+        <button type="button" className="button" disabled={page<=1} onClick={()=>selectPage(page-1)}>이전 페이지</button>
         <span>{page}페이지 · 전체 {active?.pagination?.total ?? '확인 중'}명 · 총 {active?.pagination?.pages ?? '확인 중'}페이지</span>
-        <button type="button" className="button" disabled={state.status !== 'success' || page >= (active?.pagination?.pages ?? 1)} onClick={()=>setPage(page+1)}>다음 페이지</button>
-        {page>1 && <button type="button" className="button" onClick={()=>setPage(1)}>첫 페이지</button>}
+        <button type="button" className="button" disabled={state.status !== 'success' || page >= (active?.pagination?.pages ?? 1)} onClick={()=>selectPage(page+1)}>다음 페이지</button>
+        {page>1 && <button type="button" className="button" onClick={()=>selectPage(1)}>첫 페이지</button>}
       </div>}
       {rankings && <p className="my-ranking">조회 기준: RPG sequence {rankings.revision ?? '확인 필요'}. 활동이 발생하면 다음 페이지의 기준이 달라질 수 있습니다.</p>}
       {rankings?.unavailableCategories?.map(item=><p className="my-ranking" key={item.id}>{item.reason}</p>)}

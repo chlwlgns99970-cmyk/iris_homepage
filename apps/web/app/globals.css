@@ -1,4 +1,6 @@
 *{box-sizing:border-box}
+.selected-stats .equipped-ring-fact{grid-column:1/-1;min-width:0}
+.selected-stats .equipped-ring-fact b{overflow-wrap:anywhere}
 :root{--bg:#070b17;--panel:#111a2c;--line:rgba(255,255,255,.09);--text:#f5f7ff;--muted:#939eb1;--purple:#6d5dfc;--pink:#d946ef;--cyan:#38bdf8;--gold:#f5c35b;--green:#34d399;--radius:20px;--shadow:0 24px 70px rgba(0,0,0,.38)}
 html{scroll-behavior:smooth}
 body{margin:0;min-height:100vh;overflow-x:hidden;color:var(--text);background:linear-gradient(180deg,#070b17,#0a1020 55%,#070b17);font-family:Pretendard,"Noto Sans KR","Apple SD Gothic Neo",Arial,sans-serif;line-height:1.6}

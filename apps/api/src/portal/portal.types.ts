@@ -1,3 +1,14 @@
+export type PortalEquippedRing = {
+  name: string;
+  grade: '일반' | '레어' | '에픽' | '유니크' | '레전더리' | '창세';
+  enhancement: number;
+  stars: number;
+  critChance: number | null;
+  critDamage: number | null;
+  options: { type: string; value: number; label: string }[];
+  balancePending: boolean;
+};
+
 export type PortalCharacter = {
   id: string;
   job: 'warrior' | 'archer' | 'mage';
@@ -7,6 +18,7 @@ export type PortalCharacter = {
   level?: string;
   power?: string;
   weapon?: string;
+  equippedRing?: PortalEquippedRing | null;
   title?: string;
   rebirth?: string;
   tower?: string;
@@ -86,6 +98,63 @@ function validDateKey(value: unknown): value is string {
 
 function nonNegativeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+const ringGrades = new Set(['일반', '레어', '에픽', '유니크', '레전더리', '창세']);
+const ringOptionDefinitions: Record<string, { label: string; max: number; unit: string }> = {
+  boss_damage: { label: '보스 피해', max: 5, unit: '%' },
+  raid_damage: { label: '레이드 피해', max: 5, unit: '%' },
+  tower_damage: { label: '탑 피해', max: 5, unit: '%' },
+  exp_gain: { label: '경험치 획득', max: 5, unit: '%' },
+  gold_gain: { label: '골드 획득', max: 5, unit: '%' },
+  chat_gold: { label: '채팅 보상 골드', max: 3, unit: '골드' },
+  shop_discount: { label: '상점 골드 상품 할인', max: 5, unit: '%' },
+};
+
+function parseRingOptions(value: unknown): PortalEquippedRing['options'] {
+  if (!Array.isArray(value) || value.length !== 2) return [];
+  const options: PortalEquippedRing['options'] = [];
+  const types = new Set<string>();
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
+    const option = candidate as Record<string, unknown>;
+    if (typeof option.type !== 'string' || !Object.hasOwn(ringOptionDefinitions, option.type)) return [];
+    const definition = ringOptionDefinitions[option.type];
+    if (!nonNegativeInteger(option.value) || option.value < 1 || option.value > definition.max || types.has(option.type)) return [];
+    types.add(option.type);
+    options.push({
+      type: option.type,
+      value: option.value,
+      label: `${definition.label} +${option.value}${definition.unit}`,
+    });
+  }
+  return options;
+}
+
+function parseEquippedRing(value: unknown): PortalEquippedRing | null {
+  if (value === null || value === undefined) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid response');
+  const ring = value as Record<string, unknown>;
+  const validPercent = (percent: unknown) => percent === null
+    || typeof percent === 'number' && Number.isFinite(percent) && percent >= 0;
+  if (
+    typeof ring.name !== 'string' || !ring.name.trim() || ring.name.length > 160
+    || typeof ring.grade !== 'string' || !ringGrades.has(ring.grade)
+    || !nonNegativeInteger(ring.enhancement) || !nonNegativeInteger(ring.stars)
+    || !validPercent(ring.critChance) || !validPercent(ring.critDamage)
+    || typeof ring.balancePending !== 'boolean'
+  ) throw new Error('invalid response');
+  const balancePending = ring.balancePending || ring.critChance === null || ring.critDamage === null;
+  return {
+    name: ring.name,
+    grade: ring.grade as PortalEquippedRing['grade'],
+    enhancement: ring.enhancement,
+    stars: ring.stars,
+    critChance: balancePending ? null : ring.critChance as number,
+    critDamage: balancePending ? null : ring.critDamage as number,
+    options: parseRingOptions(ring.options),
+    balancePending,
+  };
 }
 
 function validMonthDay(month: unknown, day: unknown) {
@@ -259,6 +328,7 @@ export function parsePortalDashboard(value: unknown): PortalDashboard {
   ) throw new Error('invalid response');
   const rawCharacters = Array.isArray(data.characters) ? data.characters : [];
   const jobs = new Set<string>();
+  let equippedRingSeen = false;
   const characters = rawCharacters.map((candidate) => {
     if (!candidate || typeof candidate !== 'object') throw new Error('invalid response');
     const character = candidate as Record<string, unknown>;
@@ -270,9 +340,23 @@ export function parsePortalDashboard(value: unknown): PortalDashboard {
       || (character.current !== undefined && typeof character.current !== 'boolean')
     ) throw new Error('invalid response');
     jobs.add(String(character.job));
+    const equippedRing = character.current === true ? parseEquippedRing(character.equippedRing) : null;
+    if (equippedRing && equippedRingSeen) throw new Error('invalid response');
+    if (equippedRing) equippedRingSeen = true;
     return {
-      ...character,
+      id: character.id,
+      job: character.job,
       gender: character.gender ?? 'unknown',
+      current: character.current,
+      name: character.name,
+      level: character.level,
+      power: character.power,
+      weapon: character.weapon,
+      title: character.title,
+      rebirth: character.rebirth,
+      tower: character.tower,
+      raid: character.raid,
+      ...(character.equippedRing === undefined ? {} : { equippedRing }),
     } as PortalCharacter;
   });
   return {

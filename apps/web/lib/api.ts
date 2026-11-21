@@ -137,6 +137,17 @@ export type PortalRankings = {
   hallOfFame?: PortalHallOfFameRow[];
 };
 
+export type PortalEquippedRing = {
+  name: string;
+  grade: '일반' | '레어' | '에픽' | '유니크' | '레전더리' | '창세';
+  enhancement: number;
+  stars: number;
+  critChance: number | null;
+  critDamage: number | null;
+  options: { type: string; value: number; label: string }[];
+  balancePending: boolean;
+};
+
 export type PortalCharacter = {
   id: string;
   job: 'warrior' | 'archer' | 'mage';
@@ -146,6 +157,7 @@ export type PortalCharacter = {
   level?: string;
   power?: string;
   weapon?: string;
+  equippedRing?: PortalEquippedRing | null;
   title?: string;
   rebirth?: string;
   tower?: string;
